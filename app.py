@@ -1413,7 +1413,7 @@ with tab_comunicaciones:
                 "H2 · Sin contratar con apertura": (
                     "hito_2_val",
                     "Este hito mide los días entre la apertura del primer proceso precontractual "
-                    "y la firma del acta de inicio del contrato.",
+                    "y la fecha de corte de gesproy.",
                 ),
                 "H3 · Contratado sin acta de inicio": (
                     "hito_3_val",
