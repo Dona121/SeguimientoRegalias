@@ -113,14 +113,14 @@ def procesar(file_bytes):
                 (~pl.col("FECHA APROBACIÓN PROYECTO").is_null()) & (~pl.col("FECHA DE CORTE GESPROY").is_null()) &
                 (pl.col("FECHA APROBACIÓN PROYECTO") <= pl.col("FECHA DE CORTE GESPROY"))
             ).then((pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA APROBACIÓN PROYECTO")).dt.total_days()).otherwise(None).alias("hito_1_val"),
-            # Hito 2 — clip(0) previene valores negativos por errores de datos
-            # (ej: acta firmada antes de apertura del proceso)
+            # Hito 2 — días desde la apertura del primer proceso precontractual
+            # hasta la fecha de corte GESPROY, mientras el proyecto siga sin contratar.
             pl.when(
                 ((pl.col("ESTADO PROYECTO") == "SIN CONTRATAR") | pl.col("ESTADO PROYECTO").is_null() | (pl.col("ESTADO PROYECTO") == "")) &
                 (~pl.col("FECHA DE APERTURA DEL PRIMER PROCESO").is_null())
             ).then(
                 (pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA DE APERTURA DEL PRIMER PROCESO"))
-                .dt.total_days().clip(lower_bound=0)
+                .dt.total_days()
             ).otherwise(None).alias("hito_2_val"),
             # Hito 3
             pl.when(

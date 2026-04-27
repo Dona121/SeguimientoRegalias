@@ -347,7 +347,13 @@ with tab_resumen:
             return "<td class='null-cell'>—</td>"
         clasi  = _clasificar_promedio(dias_val, clasi_key)
         hito_k = HITO_KEY_MAP.get(clasi_key)
-        return f"<td><span class='dias-val'>{dias_val:.1f} d</span>{badge_html(clasi, hito_k)}</td>"
+        # H4 se mide en meses (igual que sus intervalos de alerta y el tooltip);
+        # el resto de hitos se mide en días.
+        if clasi_key == "clasi_4":
+            display = f"{dias_val/30.0:.1f} m"
+        else:
+            display = f"{dias_val:.1f} d"
+        return f"<td><span class='dias-val'>{display}</span>{badge_html(clasi, hito_k)}</td>"
 
     def _build_row(row):
         e    = html.escape(row["ENTIDAD O SECRETARIA"] or "")
@@ -374,7 +380,7 @@ with tab_resumen:
         {th("Sin contratar<br>sin apertura", "Hito 1 · Sin contratar sin apertura",
             "Promedio de días entre la <b>Fecha de aprobación</b> y la <b>Fecha de corte GESPROY</b>.<br><br>Condición: Estado = SIN CONTRATAR y sin fecha de apertura.")}
         {th("Sin contratar<br>con apertura", "Hito 2 · Sin contratar con apertura",
-            "Promedio de días entre la <b>Fecha de apertura del primer proceso</b> y la <b>Fecha de acta de inicio</b>.<br><br>Condición: Estado = SIN CONTRATAR con fecha de apertura registrada.")}
+            "Promedio de días entre la <b>Fecha de apertura del primer proceso</b> y la <b>Fecha de corte GESPROY</b>, sin firma del primer contrato.<br><br>Condición: Estado = SIN CONTRATAR con fecha de apertura registrada.")}
         {th("Contratado<br>sin acta de inicio", "Hito 3 · Contratado sin acta de inicio",
             "Promedio de días entre la <b>Fecha de suscripción</b> y la <b>Fecha de corte GESPROY</b>.<br><br>Condición: Estado = CONTRATADO SIN ACTA DE INICIO.<br><br>Semáforo: Verde 0–15 d · Naranja 16–30 d · Rojo 31–45 d · Negro &gt;45 d")}
         {th("En ejecución<br>rezagado", "Hito 4 · En ejecución rezagado",
@@ -1059,12 +1065,12 @@ with tab_evaluacion:
                     f"<strong>{n_h2}</strong> con proceso abierto pero sin contrato suscrito "
                     f"(hito 2: días desde apertura)."
                 )
-            # Máxima alerta
-            n_negro_h1 = conteos_hito.get(">180", 0)
-            n_negro_h2 = conteos_hito.get(">180", 0)  # comparten clave
-            if n_negro_h1 + n_negro_h2 > 0:
+            # Máxima alerta — H1 y H2 comparten la clave ">180" en conteos_hito,
+            # así que el valor ya está combinado: leerlo una sola vez.
+            n_negro = conteos_hito.get(">180", 0)
+            if n_negro > 0:
                 partes.append(
-                    f"Se detectaron <strong>{n_negro_h1 + n_negro_h2} proyecto(s) en alerta negra</strong> "
+                    f"Se detectaron <strong>{n_negro} proyecto(s) en alerta negra</strong> "
                     f"(más de 180 días sin avance). Requieren intervención urgente."
                 )
 
@@ -1412,8 +1418,9 @@ with tab_comunicaciones:
                 ),
                 "H2 · Sin contratar con apertura": (
                     "hito_2_val",
-                    "Este hito mide los días entre la apertura del primer proceso precontractual "
-                    "y la fecha de corte de gesproy.",
+                    "Este hito mide los días transcurridos desde la apertura del primer proceso "
+                    "precontractual hasta la fecha de corte GESPROY, sin que se haya suscrito "
+                    "el contrato.",
                 ),
                 "H3 · Contratado sin acta de inicio": (
                     "hito_3_val",

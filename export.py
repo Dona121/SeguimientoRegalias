@@ -202,7 +202,13 @@ def generar_excel(df_f_full, df_agr, clasi_por_entidad_map,
         for dias_col, clasi_key in HITO_AGR:
             dias     = row_dict.get(dias_col)
             dias_num = round(float(dias), 1) if dias is not None and str(dias) != "nan" else None
-            _data_cell(ws1.cell(ri, col), dias_num, bg=bg, center=True, fmt="#,##0.0")
+            # H4 — el encabezado de la columna está en meses, así que el valor
+            # mostrado también va en meses (los demás hitos van en días).
+            if clasi_key == "clasi_4" and dias_num is not None:
+                valor_mostrado = round(dias_num / 30.0, 1)
+            else:
+                valor_mostrado = dias_num
+            _data_cell(ws1.cell(ri, col), valor_mostrado, bg=bg, center=True, fmt="#,##0.0")
             col += 1
 
             # Clasificar desde el promedio — coherente con el valor mostrado

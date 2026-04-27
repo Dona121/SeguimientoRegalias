@@ -273,8 +273,8 @@ HITO_CALC_META = {
     ),
     "hito_2_val": (
         "Fecha apertura proceso", "FECHA DE APERTURA DEL PRIMER PROCESO",
-        "Fecha acta de inicio",   "FECHA DE CORTE GESPROY",
-        "Días desde la apertura del primer proceso hasta la fecha de corte de gesproy.",
+        "Fecha corte GESPROY",    "FECHA DE CORTE GESPROY",
+        "Días desde la apertura del primer proceso hasta el corte, sin firma del primer contrato.",
     ),
     "hito_3_val": (
         "Fecha suscripción",   "FECHA SUSCRIPCION",
