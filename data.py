@@ -119,7 +119,7 @@ def procesar(file_bytes):
                 ((pl.col("ESTADO PROYECTO") == "SIN CONTRATAR") | pl.col("ESTADO PROYECTO").is_null() | (pl.col("ESTADO PROYECTO") == "")) &
                 (~pl.col("FECHA DE APERTURA DEL PRIMER PROCESO").is_null())
             ).then(
-                (pl.col("FECHA ACTA INICIO") - pl.col("FECHA DE APERTURA DEL PRIMER PROCESO"))
+                (pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA DE APERTURA DEL PRIMER PROCESO"))
                 .dt.total_days().clip(lower_bound=0)
             ).otherwise(None).alias("hito_2_val"),
             # Hito 3
