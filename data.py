@@ -5,8 +5,11 @@ Incluye: clasificar*, procesar*, _cargar_desde_github, procesar_contratos,
          validar_archivo, th, error_card.
 """
 from constants import (
-    TABLA_ESPERADA, TABLA_DESCENTRALIZADAS, COLS_EVAL, COLS_EVAL_LABELS,
+    TABLA_ESPERADA, TABLA_DESCENTRALIZADAS, TABLA_MUNICIPIOS,
+    COLS_EVAL, COLS_EVAL_LABELS,
     INTERVALOS, COLUMNAS_ESPERADAS, TIPO_LABEL, TIPO_EJEMPLO, C,
+    DATE_COLS_DESCENT,
+    AVANCE_FISICO_DEPTO, AVANCE_FISICO_OTROS, AVANCE_FINANCIERO,
 )
 import streamlit as st
 import polars as pl
@@ -46,6 +49,55 @@ def clasificar(col, intervalos):
         expr = expr.when(cond).then(pl.lit(label))
     return expr.otherwise(None)
 
+def _cast_dates_exprs(df, date_cols):
+    """
+    Construye una lista de expresiones polars para castear las columnas de fecha
+    a pl.Date, manejando los tipos que pueden venir desde Excel/GitHub:
+    pl.Date nativo, pl.Datetime, serial numérico (Int32/Int64), y texto en
+    múltiples formatos (DD/MM/YYYY, YYYY-MM-DD, etc.).
+    Solo procesa columnas que existen en el DataFrame.
+    """
+    EXCEL_EPOCH = date(1899, 12, 30)
+    exprs = []
+    for col in date_cols:
+        if col not in df.columns:
+            continue
+        dtype = df[col].dtype
+        if dtype == pl.Date:
+            exprs.append(pl.col(col))
+        elif dtype in (pl.Datetime,):
+            exprs.append(pl.col(col).dt.date().alias(col))
+        elif dtype in (pl.Int32, pl.Int64, pl.UInt32, pl.UInt16):
+            exprs.append(
+                (pl.lit(EXCEL_EPOCH) + pl.duration(days=pl.col(col).cast(pl.Int64)))
+                .cast(pl.Date).alias(col)
+            )
+        elif dtype in (pl.Utf8, pl.String):
+            cleaned = (
+                pl.col(col).str.replace_all(r"[\n\r\t]", " ").str.strip_chars()
+            )
+            exprs.append(
+                pl.coalesce([
+                    cleaned.str.to_date("%d/%m/%Y",                   strict=False),
+                    cleaned.str.to_date("%Y-%m-%d",                   strict=False),
+                    cleaned.str.to_date("%m/%d/%Y",                   strict=False),
+                    cleaned.str.to_date("%d-%m-%Y",                   strict=False),
+                    cleaned.str.to_datetime("%Y-%m-%dT%H:%M:%S",      strict=False).dt.date(),
+                    cleaned.str.to_datetime("%Y-%m-%d %H:%M:%S",      strict=False).dt.date(),
+                    cleaned.str.to_datetime("%d/%m/%Y %H:%M:%S",      strict=False).dt.date(),
+                ]).alias(col)
+            )
+        else:
+            exprs.append(pl.col(col).cast(pl.Date, strict=False))
+    return exprs
+
+
+def _cast_numeric_safe(df, cols):
+    """Casteo silencioso a Float64 — solo si la columna existe."""
+    return [pl.col(c).cast(pl.Float64, strict=False).alias(c)
+            for c in cols if c in df.columns]
+
+
 def procesar(file_bytes):
     df = pl.read_excel(io.BytesIO(file_bytes), table_name=TABLA_ESPERADA)
 
@@ -55,48 +107,11 @@ def procesar(file_bytes):
         "FECHA DE FINALIZACIÓN", "FECHA DE CORTE GESPROY",
     ]
 
-    # Cast robusto: maneja pl.Date nativo, Int32/Int64 (serial Excel = días desde 1899-12-30),
-    # y Utf8/String (texto "DD/MM/YYYY" o "YYYY-MM-DD") que puede llegar desde GitHub.
-    EXCEL_EPOCH = date(1899, 12, 30)
-    cast_exprs = []
-    for col in DATE_COLS:
-        dtype = df[col].dtype
-        if dtype == pl.Date:
-            # Ya es fecha nativa — no tocar
-            cast_exprs.append(pl.col(col))
-        elif dtype in (pl.Datetime,):
-            # Datetime → extraer solo la parte de fecha
-            cast_exprs.append(pl.col(col).dt.date().alias(col))
-        elif dtype in (pl.Int32, pl.Int64, pl.UInt32, pl.UInt16):
-            # Serial numérico Excel → días desde 1899-12-30
-            cast_exprs.append(
-                (pl.lit(EXCEL_EPOCH) + pl.duration(days=pl.col(col).cast(pl.Int64)))
-                .cast(pl.Date)
-                .alias(col)
-            )
-        elif dtype in (pl.Utf8, pl.String):
-            # Texto — limpiar saltos de línea/tabs/espacios antes de parsear.
-            # GESPROY puede exportar celdas con \n o \r dentro del valor de fecha.
-            cleaned = (
-                pl.col(col)
-                .str.replace_all(r"[\n\r\t]", " ")
-                .str.strip_chars()
-            )
-            cast_exprs.append(
-                pl.coalesce([
-                    cleaned.str.to_date("%d/%m/%Y",           strict=False),
-                    cleaned.str.to_date("%Y-%m-%d",           strict=False),
-                    cleaned.str.to_date("%m/%d/%Y",           strict=False),
-                    cleaned.str.to_date("%d-%m-%Y",           strict=False),
-                    # Timestamps con T o espacio (ej: "2026-02-15T00:00:00")
-                    cleaned.str.to_datetime("%Y-%m-%dT%H:%M:%S", strict=False).dt.date(),
-                    cleaned.str.to_datetime("%Y-%m-%d %H:%M:%S", strict=False).dt.date(),
-                    cleaned.str.to_datetime("%d/%m/%Y %H:%M:%S", strict=False).dt.date(),
-                ]).alias(col)
-            )
-        else:
-            # Fallback genérico para tipos inesperados
-            cast_exprs.append(pl.col(col).cast(pl.Date, strict=False))
+    cast_exprs = _cast_dates_exprs(df, DATE_COLS)
+
+    # Columnas opcionales — solo las incluimos si están presentes
+    extra_cols = [c for c in (AVANCE_FISICO_DEPTO, AVANCE_FINANCIERO,
+                              "RESPONSABLE CARGUE EN GESPROY") if c in df.columns]
 
     df = (
         df.select(
@@ -104,8 +119,11 @@ def procesar(file_bytes):
             "ESTADO PROYECTO", "ESTADO CONTRATO",
             "CPI", "SPI",
             *DATE_COLS,
+            *extra_cols,
         )
-        .with_columns(cast_exprs)
+        .with_columns(cast_exprs + _cast_numeric_safe(
+            df, [AVANCE_FISICO_DEPTO, AVANCE_FINANCIERO]
+        ))
         .with_columns(
             # Hito 1 — omitir si la fecha de aprobación es posterior a la fecha de corte
             pl.when(
@@ -550,7 +568,7 @@ def procesar_contratos(file_bytes):
             .alias("CONTRATO VALOR TOTAL")
         )
 
-        # 6. Deduplicar y uppercase estado
+        # 6. Deduplicar y normalizar ESTADO CONTRATO a mayúsculas
         df = df.unique()
         df = df.with_columns(
             pl.col("ESTADO CONTRATO")
@@ -561,7 +579,158 @@ def procesar_contratos(file_bytes):
         )
 
         return (df if df.height > 0 else None), " | ".join(diag)
-
     except Exception as e:
-        diag.append(f"EXCEPCIÓN: {type(e).__name__}: {e}")
+        _log.exception("procesar_contratos: error inesperado")
+        diag.append(f"Excepción: {type(e).__name__}: {e}")
         return None, " | ".join(diag)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DESCENTRALIZADAS — cálculo de hitos (1-4, sin Hito 5: no hay FECHA DE FINALIZACIÓN)
+# ─────────────────────────────────────────────────────────────────────────────
+@st.cache_data(show_spinner=False)
+def procesar_descentralizadas_hitos(file_bytes):
+    """
+    Lee la tabla OtrosEjecutoresDescentralizadas y devuelve un DataFrame con
+    los hitos calculados (1-4 únicamente — esta tabla no contiene
+    FECHA DE FINALIZACIÓN así que no aplica el Hito 5).
+    Agrupa lógicamente por EJECUTOR (no ENTIDAD O SECRETARIA).
+    Retorna None si la tabla no existe o falla.
+    """
+    try:
+        df = pl.read_excel(io.BytesIO(file_bytes), table_name=TABLA_DESCENTRALIZADAS)
+    except Exception:
+        _log.exception("procesar_descentralizadas_hitos: tabla no encontrada o ilegible")
+        return None
+
+    requeridas = ["EJECUTOR", "BPIN", "ESTADO PROYECTO"]
+    if any(c not in df.columns for c in requeridas):
+        return None
+
+    cast_exprs = _cast_dates_exprs(df, DATE_COLS_DESCENT)
+
+    # Columnas opcionales
+    extra_cols = [c for c in (AVANCE_FISICO_OTROS, AVANCE_FINANCIERO,
+                              "NOMBRE DEL PROYECTO", "ESTADO CONTRATO",
+                              "CPI", "SPI") if c in df.columns]
+
+    base_cols = ["EJECUTOR", "BPIN"]
+    if "NOMBRE DEL PROYECTO" in df.columns:
+        base_cols.append("NOMBRE DEL PROYECTO")
+    base_cols.append("ESTADO PROYECTO")
+    select_cols = base_cols + [c for c in (AVANCE_FISICO_OTROS, AVANCE_FINANCIERO,
+                                           "ESTADO CONTRATO", "CPI", "SPI") if c in df.columns]
+    select_cols += [c for c in DATE_COLS_DESCENT if c in df.columns]
+
+    df = (
+        df.select(select_cols)
+        .with_columns(cast_exprs + _cast_numeric_safe(
+            df, [AVANCE_FISICO_OTROS, AVANCE_FINANCIERO, "CPI", "SPI"]
+        ))
+    )
+
+    # Hitos — mismas fórmulas que Departamento, pero sin Hito 5
+    hito_exprs = []
+    if all(c in df.columns for c in ("FECHA APROBACIÓN PROYECTO", "FECHA DE CORTE GESPROY")):
+        hito_exprs.append(
+            pl.when(
+                ((pl.col("ESTADO PROYECTO") == "SIN CONTRATAR") | pl.col("ESTADO PROYECTO").is_null() | (pl.col("ESTADO PROYECTO") == "")) &
+                (~pl.col("FECHA APROBACIÓN PROYECTO").is_null()) &
+                (~pl.col("FECHA DE CORTE GESPROY").is_null()) &
+                (pl.col("FECHA APROBACIÓN PROYECTO") <= pl.col("FECHA DE CORTE GESPROY"))
+            ).then(
+                (pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA APROBACIÓN PROYECTO")).dt.total_days()
+            ).otherwise(None).alias("hito_1_val")
+        )
+    if all(c in df.columns for c in ("FECHA DE APERTURA DEL PRIMER PROCESO", "FECHA DE CORTE GESPROY")):
+        hito_exprs.append(
+            pl.when(
+                ((pl.col("ESTADO PROYECTO") == "SIN CONTRATAR") | pl.col("ESTADO PROYECTO").is_null() | (pl.col("ESTADO PROYECTO") == "")) &
+                (~pl.col("FECHA DE APERTURA DEL PRIMER PROCESO").is_null())
+            ).then(
+                (pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA DE APERTURA DEL PRIMER PROCESO")).dt.total_days()
+            ).otherwise(None).alias("hito_2_val")
+        )
+    if all(c in df.columns for c in ("FECHA SUSCRIPCION", "FECHA DE CORTE GESPROY")):
+        hito_exprs.append(
+            pl.when(
+                (pl.col("ESTADO PROYECTO") == "CONTRATADO SIN ACTA DE INICIO") &
+                (~pl.col("FECHA SUSCRIPCION").is_null())
+            ).then(
+                (pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA SUSCRIPCION")).dt.total_days()
+            ).otherwise(None).alias("hito_3_val")
+        )
+    if all(c in df.columns for c in ("HORIZONTE DEL PROYECTO", "FECHA DE CORTE GESPROY", "CPI", "SPI")):
+        hito_exprs.append(
+            pl.when(
+                (pl.col("ESTADO PROYECTO") == "CONTRATADO EN EJECUCIÓN") &
+                (pl.col("CPI") == 0) & (pl.col("SPI") == 0) &
+                (pl.col("HORIZONTE DEL PROYECTO") <= pl.col("FECHA DE CORTE GESPROY"))
+            ).then(
+                (pl.col("FECHA DE CORTE GESPROY") - pl.col("HORIZONTE DEL PROYECTO")).dt.total_days()
+            ).otherwise(None).alias("hito_4_val")
+        )
+
+    # Suspendidos / Para cierre
+    flag_exprs = []
+    if "ESTADO CONTRATO" in df.columns:
+        flag_exprs.append(
+            pl.when(pl.col("ESTADO CONTRATO").str.strip_chars().str.to_uppercase() == "SUSPENDIDO")
+            .then(pl.lit(1)).otherwise(None).alias("Suspendidos")
+        )
+    flag_exprs.append(
+        pl.when(pl.col("ESTADO PROYECTO") == "PARA CIERRE")
+        .then(pl.lit(1)).otherwise(None).alias("Para cierre")
+    )
+
+    df = df.with_columns(hito_exprs + flag_exprs)
+
+    # Clasificaciones
+    clasi_exprs = []
+    if "hito_1_val" in df.columns:
+        clasi_exprs.append(clasificar("hito_1_val", INTERVALOS["hito_1_val"]).alias("clasi_1"))
+    if "hito_2_val" in df.columns:
+        clasi_exprs.append(clasificar("hito_2_val", INTERVALOS["hito_2_val"]).alias("clasi_2"))
+    if "hito_3_val" in df.columns:
+        clasi_exprs.append(clasificar("hito_3_val", INTERVALOS["hito_3_val"]).alias("clasi_3"))
+    if "hito_4_val" in df.columns:
+        clasi_exprs.append(clasificar_hito4_meses("hito_4_val").alias("clasi_4"))
+    if clasi_exprs:
+        df = df.with_columns(clasi_exprs)
+
+    return df
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MUNICIPIOS — solo proyectos (no hitos, no contratos, no evaluación)
+# ─────────────────────────────────────────────────────────────────────────────
+@st.cache_data(show_spinner=False)
+def procesar_municipios(file_bytes):
+    """
+    Lee la tabla OtrosEjecutoresMunicipios y retorna un DataFrame con las
+    columnas mínimas para mostrar el listado de proyectos: EJECUTOR, BPIN,
+    NOMBRE DEL PROYECTO, ESTADO PROYECTO, AVANCE FÍSICO, AVANCE FINANCIERO.
+    Esta tabla no contiene fechas de hitos ni datos de contratos.
+    Retorna None si la tabla no existe.
+    """
+    try:
+        df = pl.read_excel(io.BytesIO(file_bytes), table_name=TABLA_MUNICIPIOS)
+    except Exception:
+        _log.exception("procesar_municipios: tabla no encontrada o ilegible")
+        return None
+
+    requeridas = ["EJECUTOR", "BPIN", "ESTADO PROYECTO"]
+    if any(c not in df.columns for c in requeridas):
+        return None
+
+    deseadas = [
+        "EJECUTOR", "BPIN",
+        "NOMBRE DEL PROYECTO", "ESTADO PROYECTO", "ESTADO CONTRATO",
+        AVANCE_FISICO_OTROS, AVANCE_FINANCIERO,
+    ]
+    presentes = [c for c in deseadas if c in df.columns]
+
+    df = df.select(presentes).with_columns(
+        _cast_numeric_safe(df, [AVANCE_FISICO_OTROS, AVANCE_FINANCIERO])
+    )
+    return df

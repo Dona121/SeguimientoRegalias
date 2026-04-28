@@ -9,6 +9,7 @@ from constants import (
 )
 from data import (
     procesar, procesar_contratos, procesar_eval_sucre, procesar_descentralizadas,
+    procesar_descentralizadas_hitos, procesar_municipios,
     _cargar_desde_github, validar_archivo, th, error_card,
     _render_eval_errors,
     GITHUB_RAW_URL, GITHUB_CONTRATOS_URL,
@@ -40,6 +41,20 @@ _log = logging.getLogger(__name__)
 inject_css()
 
 with st.sidebar:
+    # ── Selector de vista (controla qué se muestra en el área principal) ─────
+    st.markdown("<div class='sidebar-section'>👁 Vista</div>", unsafe_allow_html=True)
+    vista = st.radio(
+        "Vista",
+        ["Departamento", "Descentralizadas", "Municipios"],
+        label_visibility="collapsed",
+        key="vista_principal",
+        help=(
+            "Departamento: Matriz de Seguimiento (hitos completos).\n"
+            "Descentralizadas: Hitos 1-4 + evaluación.\n"
+            "Municipios: solo listado de proyectos."
+        ),
+    )
+
     st.markdown("<div class='sidebar-section'>📁 Datos</div>", unsafe_allow_html=True)
 
     # ── Botón de recarga ──────────────────────────────────────────────────────
@@ -174,6 +189,8 @@ if errores:
 
 try:
     df = procesar(file_bytes)
+    df_descent_hitos = procesar_descentralizadas_hitos(file_bytes)
+    df_municipios    = procesar_municipios(file_bytes)
 except Exception as e:
     msg = str(e)
     col_hint = ""
@@ -332,16 +349,59 @@ clasi_por_entidad = _calcular_clasi_modal(df, _CLASI_COLS)
 _df_eval_sucre, _cols_eval_sucre, _, _df_eval_sucre_raw = procesar_eval_sucre(file_bytes)
 _df_eval_desc,  _cols_eval_desc,  _, _df_eval_desc_raw  = procesar_descentralizadas(file_bytes)
 
-tab_resumen, tab_proyectos, tab_evaluacion, tab_comunicaciones, tab_exportar = st.tabs([
-    "Resumen por entidad",
-    "Todos los proyectos",
-    "Evaluación del modelo",
-    "Comunicaciones",
-    "Exportar",
-])
+# ─────────────────────────────────────────────────────────────────────────────
+# EXPORT GLOBAL — siempre disponible en el sidebar, no depende del filtro/vista.
+# Incluye Departamento, Descentralizadas y Municipios consolidados.
+# ─────────────────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("<div class='sidebar-section'>📥 Exportar</div>", unsafe_allow_html=True)
+    st.download_button(
+        label="Descargar reporte Excel",
+        data=generar_excel(
+            df_f=df, df_agr=agrupacion, clasi_por_entidad_map=clasi_por_entidad,
+            df_eval_sucre=_df_eval_sucre, cols_eval_sucre=_cols_eval_sucre,
+            df_eval_desc=_df_eval_desc,   cols_eval_desc=_cols_eval_desc,
+            df_descent_hitos=df_descent_hitos,
+            df_municipios=df_municipios,
+        ),
+        file_name=f"regalias_seguimiento_{date.today().strftime('%Y%m%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+        help=("Reporte completo y consolidado: Departamento, Descentralizadas y "
+              "Municipios. Independiente de la vista activa."),
+    )
+
+# ═════════════════════════════════════════════════════════════════════════════
+# ROUTING POR VISTA — el sidebar selecciona qué fuente se muestra en pantalla.
+# El exportable es global: siempre incluye Departamento + Descentralizadas +
+# Municipios, sin importar la vista activa.
+# ═════════════════════════════════════════════════════════════════════════════
+
+# Tabs declarados condicionalmente: cada vista crea sus propios objetos tab.
+# Las tabs de Departamento se conservan con los nombres originales para
+# minimizar cambios en el código existente.
+tab_resumen = tab_proyectos = tab_evaluacion = None
+tab_d_resumen = tab_d_proyectos = tab_d_evaluacion = None
+tab_m_proyectos = None
+
+if vista == "Departamento":
+    tab_resumen, tab_proyectos, tab_evaluacion = st.tabs([
+        "Resumen por entidad",
+        "Todos los proyectos",
+        "Evaluación del modelo",
+    ])
+elif vista == "Descentralizadas":
+    tab_d_resumen, tab_d_proyectos, tab_d_evaluacion = st.tabs([
+        "Resumen por entidad",
+        "Proyectos",
+        "Evaluación del modelo",
+    ])
+elif vista == "Municipios":
+    tab_m_proyectos = st.tabs(["Proyectos"])[0]
 
 # ── TAB 1: Tabla resumen ──────────────────────────────────────────────────────
-with tab_resumen:
+if tab_resumen is not None:
+  with tab_resumen:
     def hito_cell(dias_val, clasi_key):
         if dias_val is None or (isinstance(dias_val, float) and dias_val != dias_val):
             return "<td class='null-cell'>—</td>"
@@ -497,7 +557,8 @@ with tab_resumen:
                 </table>""", unsafe_allow_html=True)
 
 # ── TAB 2: Todos los proyectos ────────────────────────────────────────────────
-with tab_proyectos:
+if tab_proyectos is not None:
+  with tab_proyectos:
     st.markdown("<div class='section-heading'>Todos los proyectos</div>", unsafe_allow_html=True)
 
     st.markdown(f"""
@@ -635,14 +696,26 @@ with tab_proyectos:
         sel_est_proy      = st.multiselect("Estado proyecto", estados_proy_opts,
                                            placeholder="Todos los estados",
                                            label_visibility="collapsed")
-    fc4, fc5 = st.columns([1.4, 4.4])
+    fc4, fc5 = st.columns([1.4, 1.6])
     with fc4:
         estados_cont_opts = sorted(df_f["ESTADO CONTRATO"].drop_nulls().unique().to_list())
         sel_cont_proy     = st.multiselect("Estado contrato", estados_cont_opts,
                                            placeholder="Todos los contratos",
                                            label_visibility="collapsed")
+    with fc5:
+        # Filtro por responsable de cargue en GESPROY (columna nueva del archivo).
+        if "RESPONSABLE CARGUE EN GESPROY" in df_f.columns:
+            resp_opts = sorted(df_f["RESPONSABLE CARGUE EN GESPROY"].drop_nulls().unique().to_list())
+            sel_resp_proy = st.multiselect(
+                "Responsable cargue GESPROY", resp_opts,
+                placeholder="Todos los responsables",
+                label_visibility="collapsed", key="ms_resp_dpto",
+            )
+        else:
+            sel_resp_proy = []
 
-    df_proy = df_f.select(
+    # Columnas a seleccionar — incluye RESPONSABLE / AVANCE solo si existen
+    _proy_cols = [
         "ENTIDAD O SECRETARIA", "BPIN", "NOMBRE PROYECTO",
         "ESTADO PROYECTO", "ESTADO CONTRATO", "CPI", "SPI",
         "FECHA APROBACIÓN PROYECTO", "FECHA DE APERTURA DEL PRIMER PROCESO",
@@ -650,7 +723,12 @@ with tab_proyectos:
         "HORIZONTE DEL PROYECTO", "FECHA DE FINALIZACIÓN", "FECHA DE CORTE GESPROY",
         "hito_1_val", "hito_2_val", "hito_3_val", "hito_4_val", "hito_5_val",
         "clasi_1", "clasi_2", "clasi_3", "clasi_4", "clasi_5",
-    )
+    ]
+    for _opt in ("AVANCE FISICO", "AVANCE FINANCIERO", "RESPONSABLE CARGUE EN GESPROY"):
+        if _opt in df_f.columns and _opt not in _proy_cols:
+            _proy_cols.append(_opt)
+
+    df_proy = df_f.select(_proy_cols)
     if busqueda:
         term = busqueda.strip().lower()
         df_proy = df_proy.filter(
@@ -661,6 +739,8 @@ with tab_proyectos:
         df_proy = df_proy.filter(pl.col("ENTIDAD O SECRETARIA").is_in(sel_ent_proy))
     if sel_est_proy:
         df_proy = df_proy.filter(pl.col("ESTADO PROYECTO").is_in(sel_est_proy))
+    if sel_resp_proy:
+        df_proy = df_proy.filter(pl.col("RESPONSABLE CARGUE EN GESPROY").is_in(sel_resp_proy))
     if sel_cont_proy:
         df_proy = df_proy.filter(pl.col("ESTADO CONTRATO").is_in(sel_cont_proy))
 
@@ -768,8 +848,9 @@ with tab_proyectos:
         </table>
         """, unsafe_allow_html=True)
 
-# ── TAB 3: Evaluación del modelo ──────────────────────────────────────────────
-with tab_evaluacion:
+# ── TAB 3: Evaluación del modelo (solo Departamento) ─────────────────────────
+if tab_evaluacion is not None:
+  with tab_evaluacion:
     st.markdown("<div class='section-heading'>Evaluación del modelo ejecutor</div>", unsafe_allow_html=True)
 
     modelo_sel = st.radio(
@@ -1258,32 +1339,15 @@ with tab_evaluacion:
     </table>
     """, unsafe_allow_html=True)
 
-# ── TAB 4: Exportar ───────────────────────────────────────────────────────────
-with tab_exportar:
-    st.markdown("<div class='section-heading'>Descargar reporte</div>", unsafe_allow_html=True)
-    st.markdown(
-        "El archivo incluye hasta **4 hojas**: "
-        "**Resumen por entidad** con promedios por hito y nivel de alerta, "
-        "**Detalle proyectos** con cada proyecto y sus fechas de cálculo, "
-        "**Evaluación Sucre** y **Evaluación Descentralizadas** con las calificaciones "
-        "promedio por entidad (semáforo verde ≥80, azul ≥60, naranja ≥40, rojo <40).",
-        unsafe_allow_html=False,
-    )
-    st.markdown("<div style='height:0.8rem'></div>", unsafe_allow_html=True)
+# Las pestañas de Exportar y Comunicaciones se eliminaron: el botón de
+# exportar está ahora en el sidebar (siempre visible y global), y el módulo
+# de Comunicaciones se removió por desuso.
 
-    st.download_button(
-        label="Descargar reporte Excel",
-        data=generar_excel(
-            df_f, agrupacion, clasi_por_entidad,
-            df_eval_sucre=_df_eval_sucre, cols_eval_sucre=_cols_eval_sucre,
-            df_eval_desc=_df_eval_desc,   cols_eval_desc=_cols_eval_desc,
-        ),
-        file_name=f"regalias_seguimiento_{date.today().strftime('%Y%m%d')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-
-# ── TAB 5: Comunicaciones ─────────────────────────────────────────────────────
-with tab_comunicaciones:
+# ─────────────────────────────────────────────────────────────────────────────
+# DEAD CODE — bloque histórico que queda después del corte de tabs.
+# Mantener `if False:` para preservar ramas no ejecutables sin romper el flujo.
+# ─────────────────────────────────────────────────────────────────────────────
+if False:
     st.markdown("<div class='section-heading'>Comunicaciones</div>", unsafe_allow_html=True)
 
     st.markdown(f"""
@@ -1539,3 +1603,310 @@ with tab_comunicaciones:
             """, height=55)
 
             st.markdown("</div>", unsafe_allow_html=True)
+
+# ═════════════════════════════════════════════════════════════════════════════
+# VISTA DESCENTRALIZADAS — Resumen por entidad (hitos 1-4) + Proyectos + Evaluación
+# ═════════════════════════════════════════════════════════════════════════════
+if tab_d_resumen is not None and df_descent_hitos is not None:
+  with tab_d_resumen:
+    st.markdown("<div class='section-heading'>Resumen por ejecutor (Descentralizadas)</div>",
+                unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='font-size:0.78rem;color:{C['muted']};margin-bottom:1rem'>"
+        "Cálculo de hitos 1 a 4 por ejecutor. <strong>Hito 5 no aplica</strong> "
+        "porque la tabla de Descentralizadas no contiene fecha de finalización.</div>",
+        unsafe_allow_html=True,
+    )
+
+    # Agregar promedios por EJECUTOR
+    _hito_cols_present = [c for c in ("hito_1_val","hito_2_val","hito_3_val","hito_4_val")
+                          if c in df_descent_hitos.columns]
+    _agg_exprs = []
+    for hk in _hito_cols_present:
+        n = hk.split("_")[1]
+        _agg_exprs.append(pl.col(hk).mean().round(1).alias(f"Hito {n} (días)"))
+    if "Suspendidos" in df_descent_hitos.columns:
+        _agg_exprs.append(pl.col("Suspendidos").sum().alias("Suspendidos"))
+    if "Para cierre" in df_descent_hitos.columns:
+        _agg_exprs.append(pl.col("Para cierre").sum().alias("Para cierre"))
+    _agg_exprs.append(pl.len().alias("Total"))
+
+    agrup_descent = (
+        df_descent_hitos.group_by("EJECUTOR")
+        .agg(_agg_exprs)
+        .sort("EJECUTOR")
+    )
+
+    def _hito_cell_d(dias_val, clasi_key):
+        if dias_val is None or (isinstance(dias_val, float) and dias_val != dias_val):
+            return "<td class='null-cell'>—</td>"
+        clasi  = _clasificar_promedio(dias_val, clasi_key)
+        hito_k = HITO_KEY_MAP.get(clasi_key)
+        if clasi_key == "clasi_4":
+            display = f"{dias_val/30.0:.1f} m"
+        else:
+            display = f"{dias_val:.1f} d"
+        return f"<td><span class='dias-val'>{display}</span>{badge_html(clasi, hito_k)}</td>"
+
+    rows_html_d = ""
+    for row in agrup_descent.to_dicts():
+        ent  = html.escape(row.get("EJECUTOR") or "")
+        susp = int(row.get("Suspendidos") or 0)
+        pc   = int(row.get("Para cierre") or 0)
+        cells = ""
+        for n, ck in [("1","clasi_1"),("2","clasi_2"),("3","clasi_3"),("4","clasi_4")]:
+            cells += _hito_cell_d(row.get(f"Hito {n} (días)"), ck)
+        rows_html_d += (
+            f"<tr><td class='entidad-name'>{ent}</td>{cells}"
+            f"<td style='text-align:center;font-weight:500'>{susp}</td>"
+            f"<td style='text-align:center;font-weight:500'>{pc}</td>"
+            f"<td class='col-total'>{int(row['Total'])}</td></tr>"
+        )
+
+    st.markdown(f"""
+    <table class="summary-table">
+    <thead><tr>
+        <th>Ejecutor</th>
+        {th("Sin contratar<br>sin apertura", "Hito 1",
+            "Promedio de días entre la <b>Fecha de aprobación</b> y la <b>Fecha de corte GESPROY</b>.")}
+        {th("Sin contratar<br>con apertura", "Hito 2",
+            "Promedio de días entre la <b>Fecha de apertura del primer proceso</b> y la <b>Fecha de corte GESPROY</b>.")}
+        {th("Contratado<br>sin acta de inicio", "Hito 3",
+            "Promedio de días entre la <b>Fecha de suscripción</b> y la <b>Fecha de corte GESPROY</b>.")}
+        {th("En ejecución<br>rezagado", "Hito 4",
+            "Meses entre el <b>Horizonte del proyecto</b> y la <b>Fecha de corte GESPROY</b>.")}
+        {th("Suspendidos", "Suspendidos", "Conteo por <b>ESTADO CONTRATO = SUSPENDIDO</b>.")}
+        {th("Para cierre", "Para cierre", "Conteo de proyectos con <b>Estado = PARA CIERRE</b>.")}
+        <th class="col-total">Total</th>
+    </tr></thead>
+    <tbody>{rows_html_d}</tbody>
+    </table>
+    """, unsafe_allow_html=True)
+
+elif tab_d_resumen is not None:
+  with tab_d_resumen:
+    st.warning("No se encontró la tabla **OtrosEjecutoresDescentralizadas** en el archivo, "
+               "o no tiene las columnas necesarias para calcular hitos.")
+
+if tab_d_proyectos is not None and df_descent_hitos is not None:
+  with tab_d_proyectos:
+    st.markdown("<div class='section-heading'>Proyectos · Descentralizadas</div>",
+                unsafe_allow_html=True)
+
+    fcd1, fcd2 = st.columns([2, 1.6])
+    with fcd1:
+        busq_d = st.text_input("busq_descent", placeholder="Buscar por BPIN o nombre…",
+                               label_visibility="collapsed")
+    with fcd2:
+        ejecutores_d = sorted(df_descent_hitos["EJECUTOR"].drop_nulls().unique().to_list())
+        sel_eje_d = st.multiselect("Ejecutor (Descent.)", ejecutores_d,
+                                   placeholder="Todos los ejecutores",
+                                   label_visibility="collapsed", key="ms_eje_d")
+
+    df_proy_d = df_descent_hitos
+    if busq_d:
+        term = busq_d.strip().lower()
+        if "NOMBRE DEL PROYECTO" in df_proy_d.columns:
+            df_proy_d = df_proy_d.filter(
+                pl.col("NOMBRE DEL PROYECTO").str.to_lowercase().str.contains(term, literal=True)
+                | pl.col("BPIN").cast(pl.Utf8).str.to_lowercase().str.contains(term, literal=True)
+            )
+        else:
+            df_proy_d = df_proy_d.filter(
+                pl.col("BPIN").cast(pl.Utf8).str.to_lowercase().str.contains(term, literal=True)
+            )
+    if sel_eje_d:
+        df_proy_d = df_proy_d.filter(pl.col("EJECUTOR").is_in(sel_eje_d))
+
+    df_proy_d = df_proy_d.sort(["EJECUTOR", "BPIN"])
+    st.markdown(
+        f"<div style='font-size:0.73rem;color:{C['muted']};margin:0.4rem 0 0.6rem'>"
+        f"<strong style='color:{C['azul_oscuro']}'>{df_proy_d.height}</strong> proyecto(s) encontrado(s)"
+        "</div>", unsafe_allow_html=True,
+    )
+
+    rows_d_html = []
+    for r in df_proy_d.to_dicts():
+        eje  = html.escape(r.get("EJECUTOR") or "—")
+        bpin = html.escape(str(r.get("BPIN") or "—"))
+        nom  = html.escape(r.get("NOMBRE DEL PROYECTO") or "—")
+        est  = r.get("ESTADO PROYECTO") or ""
+        af   = r.get("AVANCE FÍSICO")
+        an   = r.get("AVANCE FINANCIERO")
+        def _fmt_pct(v):
+            if v is None: return "—"
+            try:
+                fv = float(v)
+                if fv <= 1.0001: fv *= 100
+                return f"{fv:.1f}%"
+            except Exception:
+                return "—"
+        rows_d_html.append(f"""
+        <tr class="proy-data-row">
+            <td class="proy-ent">{eje}</td>
+            <td><span class="bpin-tag">{bpin}</span></td>
+            <td class="proy-nombre">{nom}</td>
+            <td>{_estado_tooltip_html(est, r)}</td>
+            <td style="text-align:center">{_fmt_pct(af)}</td>
+            <td style="text-align:center">{_fmt_pct(an)}</td>
+        </tr>""")
+
+    st.markdown(f"""
+    <table class="proy-table">
+    <thead><tr>
+        <th style="width:170px">Ejecutor</th>
+        <th style="width:120px">BPIN</th>
+        <th>Nombre del proyecto</th>
+        <th style="width:190px">Estado proyecto</th>
+        <th style="width:110px">Avance<br>físico</th>
+        <th style="width:110px">Avance<br>financiero</th>
+    </tr></thead>
+    <tbody>{''.join(rows_d_html) if rows_d_html else
+        f'<tr><td colspan="6" style="padding:1rem;text-align:center;color:{C["muted"]};font-style:italic">'
+        'Sin proyectos para los filtros activos.</td></tr>'}
+    </tbody></table>
+    """, unsafe_allow_html=True)
+
+elif tab_d_proyectos is not None:
+  with tab_d_proyectos:
+    st.warning("No se encontró la tabla **OtrosEjecutoresDescentralizadas**.")
+
+if tab_d_evaluacion is not None:
+  with tab_d_evaluacion:
+    st.markdown("<div class='section-heading'>Evaluación · Descentralizadas</div>",
+                unsafe_allow_html=True)
+    if _df_eval_desc is None or not _cols_eval_desc:
+        st.info("Sin datos de evaluación para Descentralizadas.")
+    else:
+        df_eval_pd = _df_eval_desc.to_pandas()
+        # Render simple — usa colormap por valor de calificación
+        rows_html_e = ""
+        for _, r in df_eval_pd.iterrows():
+            ent = html.escape(str(r.get("EJECUTOR") or ""))
+            cells = ""
+            valid = []
+            for col in _cols_eval_desc:
+                v = r.get(col)
+                try:
+                    fv = float(v) if v is not None else None
+                except Exception:
+                    fv = None
+                if fv is not None and fv == fv:
+                    color, _label = eval_color(fv)
+                    cells += (f"<td style='text-align:center;background:{color}22;"
+                              f"color:{color};font-weight:700'>{fv:.1f}</td>")
+                    valid.append(fv)
+                else:
+                    cells += "<td style='text-align:center;color:#9CA3AF'>—</td>"
+            prom = round(sum(valid)/len(valid), 1) if valid else None
+            if prom is not None:
+                color, label = eval_color(prom)
+                prom_cell = (f"<td style='text-align:center;background:{color};color:white;"
+                             f"font-weight:700'>{prom:.1f} · {label}</td>")
+            else:
+                prom_cell = "<td style='text-align:center;color:#9CA3AF'>—</td>"
+            rows_html_e += f"<tr><td class='entidad-name'>{ent}</td>{cells}{prom_cell}</tr>"
+
+        labels_html = "".join(f"<th>{html.escape(c.replace('CALIFICACIÓN ','').title())}</th>"
+                              for c in _cols_eval_desc)
+        st.markdown(f"""
+        <table class="summary-table">
+        <thead><tr><th>Ejecutor</th>{labels_html}<th>Promedio</th></tr></thead>
+        <tbody>{rows_html_e}</tbody>
+        </table>
+        """, unsafe_allow_html=True)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# VISTA MUNICIPIOS — solo Proyectos (sin hitos, sin contratos, sin evaluación)
+# ═════════════════════════════════════════════════════════════════════════════
+if tab_m_proyectos is not None and df_municipios is not None:
+  with tab_m_proyectos:
+    st.markdown("<div class='section-heading'>Proyectos · Municipios</div>",
+                unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='font-size:0.78rem;color:{C['muted']};margin-bottom:1rem'>"
+        "Listado de proyectos por municipio. Esta tabla no contiene fechas de hitos "
+        "ni datos de contratos: por eso no se calculan alertas ni evaluación.</div>",
+        unsafe_allow_html=True,
+    )
+
+    fmc1, fmc2 = st.columns([2, 1.6])
+    with fmc1:
+        busq_m = st.text_input("busq_munic", placeholder="Buscar por BPIN o nombre…",
+                               label_visibility="collapsed")
+    with fmc2:
+        ejecutores_m = sorted(df_municipios["EJECUTOR"].drop_nulls().unique().to_list())
+        sel_eje_m = st.multiselect("Municipio", ejecutores_m,
+                                   placeholder="Todos los municipios",
+                                   label_visibility="collapsed", key="ms_eje_m")
+
+    df_proy_m = df_municipios
+    if busq_m:
+        term = busq_m.strip().lower()
+        if "NOMBRE DEL PROYECTO" in df_proy_m.columns:
+            df_proy_m = df_proy_m.filter(
+                pl.col("NOMBRE DEL PROYECTO").str.to_lowercase().str.contains(term, literal=True)
+                | pl.col("BPIN").cast(pl.Utf8).str.to_lowercase().str.contains(term, literal=True)
+            )
+        else:
+            df_proy_m = df_proy_m.filter(
+                pl.col("BPIN").cast(pl.Utf8).str.to_lowercase().str.contains(term, literal=True)
+            )
+    if sel_eje_m:
+        df_proy_m = df_proy_m.filter(pl.col("EJECUTOR").is_in(sel_eje_m))
+
+    df_proy_m = df_proy_m.sort(["EJECUTOR", "BPIN"])
+    st.markdown(
+        f"<div style='font-size:0.73rem;color:{C['muted']};margin:0.4rem 0 0.6rem'>"
+        f"<strong style='color:{C['azul_oscuro']}'>{df_proy_m.height}</strong> proyecto(s) encontrado(s)"
+        "</div>", unsafe_allow_html=True,
+    )
+
+    rows_m_html = []
+    for r in df_proy_m.to_dicts():
+        eje  = html.escape(r.get("EJECUTOR") or "—")
+        bpin = html.escape(str(r.get("BPIN") or "—"))
+        nom  = html.escape(r.get("NOMBRE DEL PROYECTO") or "—")
+        est  = html.escape(r.get("ESTADO PROYECTO") or "")
+        af   = r.get("AVANCE FÍSICO")
+        an   = r.get("AVANCE FINANCIERO")
+        def _fmt_pct(v):
+            if v is None: return "—"
+            try:
+                fv = float(v)
+                if fv <= 1.0001: fv *= 100
+                return f"{fv:.1f}%"
+            except Exception:
+                return "—"
+        # Estado simple sin tooltip (la tabla de Municipios no trae datos
+        # suficientes para alimentar el comentario contextual).
+        rows_m_html.append(f"""
+        <tr class="proy-data-row">
+            <td class="proy-ent">{eje}</td>
+            <td><span class="bpin-tag">{bpin}</span></td>
+            <td class="proy-nombre">{nom}</td>
+            <td><span class="estado-tag">{est or '—'}</span></td>
+            <td style="text-align:center">{_fmt_pct(af)}</td>
+            <td style="text-align:center">{_fmt_pct(an)}</td>
+        </tr>""")
+
+    st.markdown(f"""
+    <table class="proy-table">
+    <thead><tr>
+        <th style="width:170px">Ejecutor (Municipio)</th>
+        <th style="width:120px">BPIN</th>
+        <th>Nombre del proyecto</th>
+        <th style="width:170px">Estado proyecto</th>
+        <th style="width:110px">Avance<br>físico</th>
+        <th style="width:110px">Avance<br>financiero</th>
+    </tr></thead>
+    <tbody>{''.join(rows_m_html) if rows_m_html else
+        f'<tr><td colspan="6" style="padding:1rem;text-align:center;color:{C["muted"]};font-style:italic">'
+        'Sin proyectos para los filtros activos.</td></tr>'}
+    </tbody></table>
+    """, unsafe_allow_html=True)
+
+elif tab_m_proyectos is not None:
+  with tab_m_proyectos:
+    st.warning("No se encontró la tabla **OtrosEjecutoresMunicipios** en el archivo.")

@@ -1374,6 +1374,8 @@ SEMAFOROS = {
 }
 
 TABLA_DESCENTRALIZADAS = "OtrosEjecutoresDescentralizadas"
+TABLA_MUNICIPIOS       = "OtrosEjecutoresMunicipios"
+
 COLS_EVAL = [
     "CALIFICACIÓN DESEMPEÑO EN LA CONTRATACIÓN",
     "CALIFICACIÓN INFORMACIÓN A TIEMPO",
@@ -1386,3 +1388,22 @@ COLS_EVAL_LABELS = [
     "Ejecución del proyecto",
     "Calidad de la información",
 ]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DESCENTRALIZADAS — fechas y columnas usadas para hitos (no incluye Hito 5
+# porque la tabla no tiene FECHA DE FINALIZACIÓN)
+# ─────────────────────────────────────────────────────────────────────────────
+DATE_COLS_DESCENT = [
+    "FECHA APROBACIÓN PROYECTO",
+    "FECHA DE APERTURA DEL PRIMER PROCESO",
+    "FECHA SUSCRIPCION",
+    "FECHA ACTA INICIO",
+    "HORIZONTE DEL PROYECTO",
+    "FECHA DE CORTE GESPROY",
+]
+
+# Avance — el nombre difiere entre tablas (Departamento usa "AVANCE FISICO" sin
+# tilde; Descentralizadas y Municipios usan "AVANCE FÍSICO" con tilde).
+AVANCE_FISICO_DEPTO     = "AVANCE FISICO"
+AVANCE_FISICO_OTROS     = "AVANCE FÍSICO"
+AVANCE_FINANCIERO       = "AVANCE FINANCIERO"

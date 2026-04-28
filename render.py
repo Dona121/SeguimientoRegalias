@@ -643,6 +643,46 @@ def _estado_tooltip_html(est_proy, row_data=None):
                 )
         fechas_html_rows = "".join(filas)
 
+    # ── Avance físico y financiero ───────────────────────────────────────────
+    # Las columnas pueden venir con o sin tilde según la fuente:
+    # Departamento usa "AVANCE FISICO"; Descentralizadas/Municipios "AVANCE FÍSICO".
+    avance_html = ""
+    if row_data:
+        af = row_data.get("AVANCE FISICO")
+        if af is None:
+            af = row_data.get("AVANCE FÍSICO")
+        an = row_data.get("AVANCE FINANCIERO")
+        def _pct(v):
+            try:
+                fv = float(v)
+                # Si viene como 0-1, expresarlo como porcentaje
+                if fv <= 1.0001:
+                    fv = fv * 100.0
+                return f"{fv:.1f}%"
+            except Exception:
+                return None
+        af_str = _pct(af) if af is not None else None
+        an_str = _pct(an) if an is not None else None
+        if af_str or an_str:
+            filas = []
+            if af_str:
+                filas.append(
+                    f'<div class="etip-fecha-row">'
+                    f'<span class="etip-fecha-lbl">Avance físico</span>'
+                    f'<span class="etip-fecha-val">{af_str}</span></div>'
+                )
+            if an_str:
+                filas.append(
+                    f'<div class="etip-fecha-row">'
+                    f'<span class="etip-fecha-lbl">Avance financiero</span>'
+                    f'<span class="etip-fecha-val">{an_str}</span></div>'
+                )
+            avance_html = (
+                '<hr class="etip-sep">'
+                '<div class="etip-section-title">Avance del proyecto</div>'
+                f'<div class="etip-fechas">{"".join(filas)}</div>'
+            )
+
     # ── Tooltip: una sola columna, secciones con separadores ─────────────────
     tooltip_body = (
         f'<span class="etip-estado">{html.escape(est_proy)}</span>'
@@ -651,6 +691,8 @@ def _estado_tooltip_html(est_proy, row_data=None):
         f'<hr class="etip-sep">'
         f'<div class="etip-section-title">Situación actual</div>'
         + (situacion_html if situacion_html else f'<div class="etip-row etip-small">Sin datos disponibles.</div>')
+
+        + avance_html
 
         + f'<hr class="etip-sep">'
         f'<div class="etip-section-title">Origen del estado</div>'

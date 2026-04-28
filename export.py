@@ -26,15 +26,34 @@ from openpyxl.utils import get_column_letter
 _log = logging.getLogger(__name__)
 
 
-def generar_excel(df_f_full, df_agr, clasi_por_entidad_map,
+def generar_excel(df_f=None, df_agr=None, clasi_por_entidad_map=None,
                   df_eval_sucre=None, cols_eval_sucre=None,
-                  df_eval_desc=None, cols_eval_desc=None):
+                  df_eval_desc=None, cols_eval_desc=None,
+                  df_descent_hitos=None, df_municipios=None,
+                  # Aliases retro-compatibles
+                  df_f_full=None):
     """
-    Genera reporte Excel formateado.
-    df_f_full  : pl.DataFrame con todas las columnas (df_f con fechas + hitos)
-    df_agr     : pl.DataFrame agrupado por entidad
-    clasi_por_entidad_map: dict {entidad -> {clasi_k -> valor_mas_frecuente}}
+    Genera reporte Excel global y consolidado, independiente de la vista activa
+    en la app. Hojas potenciales:
+      1. Resumen Departamento por Entidad
+      2. Detalle Proyectos Departamento (con fechas y alertas)
+      3. Resumen Descentralizadas por Ejecutor (hitos 1-4)
+      4. Detalle Proyectos Descentralizadas
+      5. Detalle Proyectos Municipios (sin hitos)
+      6. Evaluación Sucre
+      7. Evaluación Descentralizadas
+
+    Parámetros:
+      df_f  / df_f_full     : pl.DataFrame del Departamento con fechas + hitos.
+      df_agr                : agrupado por ENTIDAD O SECRETARIA con promedios.
+      clasi_por_entidad_map : dict {entidad -> {clasi_k -> valor_mas_frecuente}}.
+      df_descent_hitos      : pl.DataFrame de Descentralizadas con hitos 1-4.
+      df_municipios         : pl.DataFrame de Municipios (proyectos básicos).
     """
+    # Compat: el nombre antiguo era df_f_full
+    if df_f is None and df_f_full is not None:
+        df_f = df_f_full
+    df_f_full = df_f  # alias usado más abajo en el código existente
     # ── Paleta ────────────────────────────────────────────────────────────────
     AZUL_OSC  = "003D6C"
     VERDE_OSC = "005931"
@@ -445,6 +464,231 @@ def generar_excel(df_f_full, df_agr, clasi_por_entidad_map,
 
     COLS_EVAL_LABELS_MAP = dict(zip(COLS_EVAL, COLS_EVAL_LABELS))
 
+    # ══════════════════════════════════════════════════════════════════════════
+    # HOJA · Resumen Descentralizadas (hitos 1-4 promediados por ejecutor)
+    # ══════════════════════════════════════════════════════════════════════════
+    if df_descent_hitos is not None and df_descent_hitos.height > 0:
+        ws_d_res = wb.create_sheet("Resumen Descentralizadas")
+        ws_d_res.sheet_view.showGridLines = False
+
+        H_DRES_COLS = [
+            ("Ejecutor",                                       30),
+            ("H1 · Sin contratar\nSin apertura\nPromedio días", 13),
+            ("H1\nAlerta",                                       9),
+            ("H2 · Sin contratar\nCon apertura\nPromedio días", 13),
+            ("H2\nAlerta",                                       9),
+            ("H3 · Contratado\nSin acta inicio\nPromedio días", 13),
+            ("H3\nAlerta",                                       9),
+            ("H4 · En ejecución\nRezagado\nPromedio meses",     13),
+            ("H4\nAlerta",                                       9),
+            ("Suspendidos",                                     12),
+            ("Para cierre",                                     12),
+            ("Total\nproyectos",                                10),
+        ]
+        NCOLS_D = len(H_DRES_COLS)
+        _title_row(ws_d_res,
+                   "Seguimiento · Regalías — Resumen Descentralizadas",
+                   f"Generado: {date.today().strftime('%d/%m/%Y')}   ·   "
+                   "Promedio de días/meses por hito (H5 no aplica para esta tabla)",
+                   NCOLS_D)
+        ws_d_res.row_dimensions[3].height = 6
+        for ci, (lbl, w) in enumerate(H_DRES_COLS, 1):
+            _header_cell(ws_d_res.cell(4, ci), lbl)
+            ws_d_res.column_dimensions[get_column_letter(ci)].width = w
+        ws_d_res.row_dimensions[4].height = 48
+
+        # Agregar promedios por EJECUTOR
+        _hito_present_d = [c for c in ("hito_1_val","hito_2_val","hito_3_val","hito_4_val")
+                           if c in df_descent_hitos.columns]
+        _agg_d = []
+        for hk in _hito_present_d:
+            n = hk.split("_")[1]
+            _agg_d.append(pl.col(hk).mean().round(1).alias(f"Hito {n} (días)"))
+        if "Suspendidos" in df_descent_hitos.columns:
+            _agg_d.append(pl.col("Suspendidos").sum().alias("Suspendidos"))
+        if "Para cierre" in df_descent_hitos.columns:
+            _agg_d.append(pl.col("Para cierre").sum().alias("Para cierre"))
+        _agg_d.append(pl.len().alias("Total"))
+        agr_d = (df_descent_hitos.group_by("EJECUTOR").agg(_agg_d)
+                 .sort("EJECUTOR").to_pandas())
+
+        for ri, row_vals in enumerate(agr_d.values.tolist(), 5):
+            row_d = dict(zip(agr_d.columns, row_vals))
+            bg    = GRIS_ALT if ri % 2 == 0 else BLANCO
+            ws_d_res.row_dimensions[ri].height = 24
+            _data_cell(ws_d_res.cell(ri, 1), row_d.get("EJECUTOR") or "",
+                       bg=bg, bold=True, color=AZUL_MED)
+            col = 2
+            for hk_label, clasi_key in [("Hito 1 (días)","clasi_1"), ("Hito 2 (días)","clasi_2"),
+                                        ("Hito 3 (días)","clasi_3"), ("Hito 4 (días)","clasi_4")]:
+                v = row_d.get(hk_label)
+                v_num = round(float(v), 1) if v is not None and str(v) != "nan" else None
+                if clasi_key == "clasi_4" and v_num is not None:
+                    v_show = round(v_num / 30.0, 1)
+                else:
+                    v_show = v_num
+                _data_cell(ws_d_res.cell(ri, col), v_show, bg=bg, center=True, fmt="#,##0.0")
+                col += 1
+                # Clasificar
+                clasi_excel = None
+                if v_num is not None:
+                    if clasi_key == "clasi_4":
+                        m = v_num / 30.0
+                        clasi_excel = "0-1" if m <= 1 else "1.1-3" if m <= 3 else "3.1-6" if m <= 6 else ">6"
+                    else:
+                        hk_col = {"clasi_1":"hito_1_val","clasi_2":"hito_2_val","clasi_3":"hito_3_val"}[clasi_key]
+                        for label, lo, hi in INTERVALOS.get(hk_col, []):
+                            if (hi is None and v_num >= lo) or (hi is not None and lo <= v_num <= hi):
+                                clasi_excel = label
+                                break
+                _sem_cell(ws_d_res.cell(ri, col), clasi_excel, bg_row=bg)
+                col += 1
+            for extra_col in ("Suspendidos","Para cierre"):
+                v = row_d.get(extra_col)
+                _data_cell(ws_d_res.cell(ri, col),
+                           int(v) if v is not None and str(v) != "nan" else 0,
+                           bg=bg, center=True)
+                col += 1
+            _data_cell(ws_d_res.cell(ri, col),
+                       int(row_d.get("Total") or 0),
+                       bg="EFF6FF", center=True, bold=True, color=AZUL_MED)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # HOJA · Detalle Descentralizadas (proyectos con sus hitos y alertas)
+    # ══════════════════════════════════════════════════════════════════════════
+    if df_descent_hitos is not None and df_descent_hitos.height > 0:
+        ws_d_det = wb.create_sheet("Detalle Descentralizadas")
+        ws_d_det.sheet_view.showGridLines = False
+
+        # Construir columnas dinámicamente según lo que esté presente
+        H_DET_BASE = [
+            ("Ejecutor",                  28, "EJECUTOR"),
+            ("BPIN",                      13, "BPIN"),
+            ("Nombre del proyecto",       42, "NOMBRE DEL PROYECTO"),
+            ("Estado proyecto",           18, "ESTADO PROYECTO"),
+        ]
+        if "ESTADO CONTRATO" in df_descent_hitos.columns:
+            H_DET_BASE.append(("Estado contrato", 18, "ESTADO CONTRATO"))
+        if "AVANCE FÍSICO" in df_descent_hitos.columns:
+            H_DET_BASE.append(("Avance físico", 11, "AVANCE FÍSICO"))
+        if "AVANCE FINANCIERO" in df_descent_hitos.columns:
+            H_DET_BASE.append(("Avance financiero", 13, "AVANCE FINANCIERO"))
+        # Fechas que sí están
+        for fcol, flbl, fw in [
+            ("FECHA APROBACIÓN PROYECTO",         "Fecha\naprobación",       13),
+            ("FECHA DE APERTURA DEL PRIMER PROCESO","Fecha apertura\nprimer proc.", 14),
+            ("FECHA SUSCRIPCION",                 "Fecha\nsuscripción",      13),
+            ("FECHA ACTA INICIO",                 "Fecha acta\ninicio",      13),
+            ("HORIZONTE DEL PROYECTO",            "Horizonte\nproyecto",     13),
+            ("FECHA DE CORTE GESPROY",            "Fecha corte\nGESPROY",    13),
+        ]:
+            if fcol in df_descent_hitos.columns:
+                H_DET_BASE.append((flbl, fw, fcol))
+        # Hitos
+        for hk_label, hk_col in [("H1 días","hito_1_val"), ("H2 días","hito_2_val"),
+                                 ("H3 días","hito_3_val"), ("H4 días","hito_4_val")]:
+            if hk_col in df_descent_hitos.columns:
+                H_DET_BASE.append((hk_label, 8, hk_col))
+                clasi_col = "clasi_" + hk_col.split("_")[1]
+                if clasi_col in df_descent_hitos.columns:
+                    H_DET_BASE.append((hk_label.replace("días","alerta"), 9, clasi_col))
+
+        NCOLS_DD = len(H_DET_BASE)
+        _title_row(ws_d_det,
+                   "Seguimiento · Regalías — Detalle Descentralizadas",
+                   f"Generado: {date.today().strftime('%d/%m/%Y')}   ·   Proyectos con sus hitos y alertas",
+                   NCOLS_DD)
+        ws_d_det.row_dimensions[3].height = 6
+        for ci, (lbl, w, _) in enumerate(H_DET_BASE, 1):
+            _header_cell(ws_d_det.cell(4, ci), lbl)
+            ws_d_det.column_dimensions[get_column_letter(ci)].width = w
+        ws_d_det.row_dimensions[4].height = 48
+
+        DATE_SET_D = {
+            "FECHA APROBACIÓN PROYECTO","FECHA DE APERTURA DEL PRIMER PROCESO",
+            "FECHA SUSCRIPCION","FECHA ACTA INICIO","HORIZONTE DEL PROYECTO",
+            "FECHA DE CORTE GESPROY",
+        }
+        NUM_SET_D = {"hito_1_val","hito_2_val","hito_3_val","hito_4_val",
+                     "AVANCE FÍSICO","AVANCE FINANCIERO"}
+
+        rows_d = df_descent_hitos.to_dicts()
+        for ri2, row in enumerate(rows_d, 5):
+            bg = GRIS_ALT if ri2 % 2 == 0 else BLANCO
+            ws_d_det.row_dimensions[ri2].height = 32
+            for ci, (_, _, attr) in enumerate(H_DET_BASE, 1):
+                cell = ws_d_det.cell(ri2, ci)
+                val  = row.get(attr)
+                if attr.startswith("clasi_"):
+                    _sem_cell(cell, val, bg_row=bg)
+                elif attr in NUM_SET_D:
+                    v = round(float(val), 1) if val is not None and str(val) != "nan" else None
+                    _data_cell(cell, v, bg=bg, center=True, fmt="#,##0.0")
+                elif attr in DATE_SET_D:
+                    if val is not None and str(val) not in ("nan","NaT","None",""):
+                        if isinstance(val, (_dt.date, _dt.datetime)):
+                            cell.value = val
+                            cell.number_format = "DD/MM/YYYY"
+                            cell.font = _font()
+                            cell.fill = _fill(bg)
+                            cell.alignment = _align("center")
+                            cell.border = _border()
+                        else:
+                            _data_cell(cell, str(val), bg=bg, center=True)
+                    else:
+                        _data_cell(cell, "—", bg=bg, center=True, color="9CA3AF")
+                else:
+                    _data_cell(cell, val if val else "—", bg=bg)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # HOJA · Detalle Municipios (sin hitos — la tabla no tiene fechas suficientes)
+    # ══════════════════════════════════════════════════════════════════════════
+    if df_municipios is not None and df_municipios.height > 0:
+        ws_m = wb.create_sheet("Detalle Municipios")
+        ws_m.sheet_view.showGridLines = False
+
+        H_M_COLS = [
+            ("Ejecutor (Municipio)", 28, "EJECUTOR"),
+            ("BPIN",                 13, "BPIN"),
+            ("Nombre del proyecto",  42, "NOMBRE DEL PROYECTO"),
+            ("Estado proyecto",      18, "ESTADO PROYECTO"),
+        ]
+        if "ESTADO CONTRATO" in df_municipios.columns:
+            H_M_COLS.append(("Estado contrato", 18, "ESTADO CONTRATO"))
+        if "AVANCE FÍSICO" in df_municipios.columns:
+            H_M_COLS.append(("Avance físico", 11, "AVANCE FÍSICO"))
+        if "AVANCE FINANCIERO" in df_municipios.columns:
+            H_M_COLS.append(("Avance financiero", 13, "AVANCE FINANCIERO"))
+
+        NCOLS_M = len(H_M_COLS)
+        _title_row(ws_m,
+                   "Seguimiento · Regalías — Detalle Municipios",
+                   f"Generado: {date.today().strftime('%d/%m/%Y')}   ·   "
+                   "Listado de proyectos por municipio (sin cálculo de hitos)",
+                   NCOLS_M)
+        ws_m.row_dimensions[3].height = 6
+        for ci, (lbl, w, _) in enumerate(H_M_COLS, 1):
+            _header_cell(ws_m.cell(4, ci), lbl)
+            ws_m.column_dimensions[get_column_letter(ci)].width = w
+        ws_m.row_dimensions[4].height = 36
+
+        rows_m = df_municipios.to_dicts()
+        NUM_SET_M = {"AVANCE FÍSICO","AVANCE FINANCIERO"}
+        for ri2, row in enumerate(rows_m, 5):
+            bg = GRIS_ALT if ri2 % 2 == 0 else BLANCO
+            ws_m.row_dimensions[ri2].height = 24
+            for ci, (_, _, attr) in enumerate(H_M_COLS, 1):
+                cell = ws_m.cell(ri2, ci)
+                val = row.get(attr)
+                if attr in NUM_SET_M:
+                    v = round(float(val), 1) if val is not None and str(val) != "nan" else None
+                    _data_cell(cell, v, bg=bg, center=True, fmt="#,##0.0")
+                else:
+                    _data_cell(cell, val if val else "—", bg=bg)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # HOJAS · Evaluaciones (Sucre y Descentralizadas)
+    # ══════════════════════════════════════════════════════════════════════════
     if df_eval_sucre is not None and cols_eval_sucre:
         ws3    = wb.create_sheet("Evaluación Sucre")
         labels_s = [COLS_EVAL_LABELS_MAP.get(c, c) for c in cols_eval_sucre]
