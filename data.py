@@ -1,7 +1,8 @@
 """
 data.py
 Carga, validación y procesamiento de datos desde Excel y GitHub.
-Incluye: clasificar*, procesar*, _cargar_desde_github, procesar_contratos,
+Incluye: clasificar*, procesar*, procesar_descentralizadas_hitos,
+         procesar_municipios, _cargar_desde_github, procesar_contratos,
          validar_archivo, th, error_card.
 """
 from constants import (
