@@ -335,7 +335,7 @@ with ka:
 
 with kb:
     st.markdown(f"""
-    <div class="kpi-main" style="border-left-color:{C['verde_oscuro']}">
+    <div class="kpi-main kpi-second">
         <div class="label">{label_agrup_kpi}</div>
         <div class="value">{total_entidades}</div>
         <div class="sub">{sub_agrup_kpi}</div>
@@ -1897,7 +1897,7 @@ if tab_d_proyectos is not None and df_descent_hitos is not None:
                 return "—"
         rows_d_html.append(f"""
         <tr class="proy-data-row">
-            <td class="proy-ent">{eje}</td>
+            <td class="proy-ent" style="white-space:normal;font-size:0.74rem">{eje}</td>
             <td><span class="bpin-tag">{bpin}</span></td>
             <td class="proy-nombre">{nom}</td>
             <td>{_estado_tooltip_html(est, r)}</td>
@@ -1908,12 +1908,12 @@ if tab_d_proyectos is not None and df_descent_hitos is not None:
     st.markdown(f"""
     <table class="proy-table">
     <thead><tr>
-        <th style="width:170px">Ejecutor</th>
-        <th style="width:120px">BPIN</th>
+        <th style="width:130px">Ejecutor</th>
+        <th style="width:110px">BPIN</th>
         <th>Nombre del proyecto</th>
-        <th style="width:190px">Estado proyecto</th>
-        <th style="width:110px">Avance<br>físico</th>
-        <th style="width:110px">Avance<br>financiero</th>
+        <th style="width:175px">Estado proyecto</th>
+        <th style="width:90px">Avance<br>físico</th>
+        <th style="width:90px">Avance<br>financiero</th>
     </tr></thead>
     <tbody>{''.join(rows_d_html) if rows_d_html else
         f'<tr><td colspan="6" style="padding:1rem;text-align:center;color:{C["muted"]};font-style:italic">'
@@ -2329,7 +2329,7 @@ if tab_m_proyectos is not None and df_municipios is not None:
         # suficientes para alimentar el comentario contextual).
         rows_m_html.append(f"""
         <tr class="proy-data-row">
-            <td class="proy-ent">{eje}</td>
+            <td class="proy-ent" style="white-space:normal;font-size:0.74rem">{eje}</td>
             <td><span class="bpin-tag">{bpin}</span></td>
             <td class="proy-nombre">{nom}</td>
             <td><span class="estado-tag">{est or '—'}</span></td>
@@ -2340,12 +2340,12 @@ if tab_m_proyectos is not None and df_municipios is not None:
     st.markdown(f"""
     <table class="proy-table">
     <thead><tr>
-        <th style="width:170px">Ejecutor (Municipio)</th>
-        <th style="width:120px">BPIN</th>
+        <th style="width:130px">Ejecutor</th>
+        <th style="width:110px">BPIN</th>
         <th>Nombre del proyecto</th>
-        <th style="width:170px">Estado proyecto</th>
-        <th style="width:110px">Avance<br>físico</th>
-        <th style="width:110px">Avance<br>financiero</th>
+        <th style="width:155px">Estado proyecto</th>
+        <th style="width:90px">Avance<br>físico</th>
+        <th style="width:90px">Avance<br>financiero</th>
     </tr></thead>
     <tbody>{''.join(rows_m_html) if rows_m_html else
         f'<tr><td colspan="6" style="padding:1rem;text-align:center;color:{C["muted"]};font-style:italic">'

@@ -254,14 +254,16 @@ def inject_css():
         white-space: nowrap;
     }}
 
-    /* ── KPI principal — tarjeta clara, acento por borde izquierdo ── */
+    /* ── KPI principal — tarjeta azul sin degradé ── */
+    /* Variante "fuerte" para el dato primario (Total proyectos):
+       fondo azul oscuro institucional con texto blanco. */
     .kpi-main {{
-        background: #ffffff;
-        border: 1px solid {C['border']};
-        border-left: 4px solid {C['azul_oscuro']};
+        background: {C['azul_oscuro']};
+        border: 1px solid {C['azul_oscuro']};
         border-radius: 6px;
-        padding: 0.9rem 1.1rem;
+        padding: 1rem 1.2rem;
         height: 100%;
+        color: #ffffff;
         box-shadow: none;
     }}
     .kpi-main .label {{
@@ -269,22 +271,39 @@ def inject_css():
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.8px;
-        color: {C['muted']};
-        margin-bottom: 0.25rem;
+        color: rgba(255,255,255,0.72);
+        margin-bottom: 0.3rem;
     }}
     .kpi-main .value {{
         font-family: 'Montserrat', sans-serif;
-        font-size: 1.85rem;
-        font-weight: 700;
+        font-size: 2.1rem;
+        font-weight: 800;
         line-height: 1;
-        color: {C['azul_oscuro']};
+        color: #ffffff;
     }}
     .kpi-main .sub {{
         font-size: 0.72rem;
-        color: {C['muted']};
-        margin-top: 0.25rem;
+        color: rgba(255,255,255,0.65);
+        margin-top: 0.3rem;
         font-weight: 400;
     }}
+
+    /* Variante "secundaria" (Entidades): tarjeta blanca con borde y texto
+       azul, conserva la familia cromática pero le da menor peso visual
+       que la primera tarjeta. Sin degradés. */
+    .kpi-main.kpi-second {{
+        background: #ffffff;
+        border: 1px solid {C['azul_medio']}55;
+        border-left: 4px solid {C['azul_medio']};
+        color: {C['azul_oscuro']};
+    }}
+    .kpi-main.kpi-second .label {{ color: {C['azul_medio']}; }}
+    .kpi-main.kpi-second .value {{
+        color: {C['azul_oscuro']};
+        font-size: 1.75rem;
+        font-weight: 700;
+    }}
+    .kpi-main.kpi-second .sub {{ color: {C['muted']}; }}
 
     /* ── KPI secundario ── */
     .kpi-sec {{
