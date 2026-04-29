@@ -213,28 +213,23 @@ def inject_css():
 
     /* ── Header ── */
     .page-header {{
-        background: linear-gradient(120deg, {C['azul_oscuro']} 0%, {C['verde_oscuro']} 100%);
-        border-radius: 12px;
-        margin: 0 0 0.8rem 0;
-        padding: 1.8rem 2rem;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        box-shadow: 0 4px 24px rgba(0,61,108,0.22);
-        position: relative;
-        z-index: 1;
+        background: transparent;
+        border-bottom: 2px solid {C['azul_oscuro']};
+        margin: 0 0 1.4rem 0;
+        padding: 0 0 0.9rem 0;
     }}
     .page-header h1 {{
         font-family: 'Montserrat', sans-serif;
-        font-size: 1.6rem;
-        font-weight: 800;
-        color: white;
+        font-size: 1.35rem;
+        font-weight: 700;
+        color: {C['azul_oscuro']};
         margin: 0 0 0.15rem 0;
+        letter-spacing: -0.2px;
     }}
     .page-header p {{
-        color: rgba(255,255,255,0.6);
+        color: {C['muted']};
         margin: 0;
-        font-size: 0.82rem;
+        font-size: 0.78rem;
         font-weight: 400;
     }}
 
@@ -259,34 +254,36 @@ def inject_css():
         white-space: nowrap;
     }}
 
-    /* ── KPI principal ── */
+    /* ── KPI principal — tarjeta clara, acento por borde izquierdo ── */
     .kpi-main {{
-        background: {C['azul_oscuro']};
-        border-radius: 12px;
-        padding: 1.4rem 1.6rem;
-        color: white;
+        background: #ffffff;
+        border: 1px solid {C['border']};
+        border-left: 4px solid {C['azul_oscuro']};
+        border-radius: 6px;
+        padding: 0.9rem 1.1rem;
         height: 100%;
-        box-shadow: 0 4px 20px rgba(0,61,108,0.22), 0 1px 4px rgba(0,0,0,0.1);
+        box-shadow: none;
     }}
     .kpi-main .label {{
-        font-size: 0.68rem;
+        font-size: 0.65rem;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 1px;
-        color: rgba(255,255,255,0.6);
-        margin-bottom: 0.4rem;
+        letter-spacing: 0.8px;
+        color: {C['muted']};
+        margin-bottom: 0.25rem;
     }}
     .kpi-main .value {{
         font-family: 'Montserrat', sans-serif;
-        font-size: 2.8rem;
-        font-weight: 800;
+        font-size: 1.85rem;
+        font-weight: 700;
         line-height: 1;
-        color: white;
+        color: {C['azul_oscuro']};
     }}
     .kpi-main .sub {{
-        font-size: 0.78rem;
-        color: rgba(255,255,255,0.5);
-        margin-top: 0.2rem;
+        font-size: 0.72rem;
+        color: {C['muted']};
+        margin-top: 0.25rem;
+        font-weight: 400;
     }}
 
     /* ── KPI secundario ── */
@@ -330,18 +327,19 @@ def inject_css():
     }}
     .kpi-estados {{
         background: #ffffff;
-        border-radius: 10px;
+        border: 1px solid {C['border']};
+        border-radius: 6px;
         padding: 0.85rem 1.1rem;
-        box-shadow: 0 3px 16px rgba(0,40,90,0.13), 0 1px 3px rgba(0,0,0,0.07);
+        box-shadow: none;
         height: 100%;
     }}
     .kpi-estados-title {{
-        font-size: 0.63rem;
+        font-size: 0.65rem;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 1px;
+        letter-spacing: 0.8px;
         color: {C['muted']};
-        margin-bottom: 0.55rem;
+        margin-bottom: 0.45rem;
     }}
     .kpi-estados-grid {{
         display: grid;
@@ -1412,12 +1410,6 @@ INTERVALOS = {
 SEMAFOROS = {
     "hito_1_val": {
         "0-100":   ("green",  "Verde",   "Proyecto dentro de los tiempos para su primera apertura del proceso de contratación."),
-        "101-150": ("yellow", "Naranja", "Proyecto en alerta: más de 100 días sin apertura del primer proceso precontractual."),
-        "151-180": ("orange", "Rojo",    "Proyecto en alerta roja: más de 150 días sin apertura del primer proceso precontractual."),
-        ">180":    ("black",  "Negro",   "Proyecto en alerta negra: más de 180 días sin apertura del primer proceso precontractual."),
-    },
-    "hito_2_val": {
-        "0-100":   ("green",  "Verde",   "Proyecto dentro de los tiempos para la firma del primer contrato."),
         "101-150": ("yellow", "Naranja", "Proyecto en alerta: más de 100 días sin firma del primer contrato."),
         "151-180": ("orange", "Rojo",    "Proyecto en alerta roja: más de 150 días sin firma del primer contrato."),
         ">180":    ("black",  "Negro",   "Proyecto en alerta negra: más de 180 días sin firma del primer contrato."),

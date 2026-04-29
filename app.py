@@ -261,39 +261,66 @@ HITOS = {
 df_f = df
 
 # ─────────────────────────────────────────────────────────────────────────────
-# KPIs
+# KPIs — adaptados a la vista activa
 # ─────────────────────────────────────────────────────────────────────────────
-total_proy      = df_f.height
-total_entidades = df_f["ENTIDAD O SECRETARIA"].n_unique()
-suspendidos     = int(df_f["Suspendidos"].drop_nulls().sum()) if df_f["Suspendidos"].drop_nulls().len() > 0 else 0
-para_cierre     = int(df_f["Para cierre"].drop_nulls().sum()) if df_f["Para cierre"].drop_nulls().len() > 0 else 0
+# Selección de DataFrame y columna de agrupación según el filtro general.
+# Si la tabla de la vista no está disponible (None), caemos a Departamento
+# para no romper la pantalla.
+if vista == "Descentralizadas" and df_descent_hitos is not None:
+    df_kpi          = df_descent_hitos
+    col_agrup_kpi   = "EJECUTOR"
+    label_agrup_kpi = "Ejecutores"
+    sub_agrup_kpi   = "entidades descentralizadas"
+elif vista == "Municipios" and df_municipios is not None:
+    df_kpi          = df_municipios
+    col_agrup_kpi   = "EJECUTOR"
+    label_agrup_kpi = "Municipios"
+    sub_agrup_kpi   = "ejecutores municipales"
+else:
+    # Departamento (default)
+    df_kpi          = df_f
+    col_agrup_kpi   = "ENTIDAD O SECRETARIA"
+    label_agrup_kpi = "Entidades"
+    sub_agrup_kpi   = "secretarías / dependencias"
 
-estados_conteo = (
-    df_f.group_by("ESTADO PROYECTO")
-    .agg(pl.len().alias("n"))
-    .sort("n", descending=True)
-)
-estado_items = ""
-for row_e in estados_conteo.to_dicts():
-    est = row_e["ESTADO PROYECTO"] or "(Sin estado)"
-    n   = row_e["n"]
-    eu  = est.strip().upper()
-    dot_colors = {
-        "CONTRATADO EN EJECUCIÓN":       C["verde_medio"],
-        "TERMINADO":                     C["muted"],
-        "SIN CONTRATAR":                 C["cian"],
-        "PARA CIERRE":                   C["cafe"],
-        "CONTRATADO SIN ACTA DE INICIO": C["azul_medio"],
-        "SUSPENDIDO":                    C["naranja_osc"],
-    }
-    dot = dot_colors.get(eu, C["muted"])
-    estado_items += (
-        f'<div class="estado-kpi-row">'
-        f'<span class="estado-kpi-label">'
-        f'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;'
-        f'background:{dot};margin-right:5px;flex-shrink:0"></span>{est}</span>'
-        f'<span class="estado-kpi-n">{n}</span></div>'
+total_proy      = df_kpi.height
+total_entidades = df_kpi[col_agrup_kpi].n_unique() if col_agrup_kpi in df_kpi.columns else 0
+suspendidos     = (int(df_f["Suspendidos"].drop_nulls().sum())
+                   if "Suspendidos" in df_f.columns and df_f["Suspendidos"].drop_nulls().len() > 0 else 0)
+para_cierre     = (int(df_f["Para cierre"].drop_nulls().sum())
+                   if "Para cierre" in df_f.columns and df_f["Para cierre"].drop_nulls().len() > 0 else 0)
+
+if "ESTADO PROYECTO" in df_kpi.columns:
+    estados_conteo = (
+        df_kpi.group_by("ESTADO PROYECTO")
+        .agg(pl.len().alias("n"))
+        .sort("n", descending=True)
     )
+else:
+    estados_conteo = None
+
+estado_items = ""
+if estados_conteo is not None:
+    for row_e in estados_conteo.to_dicts():
+        est = row_e["ESTADO PROYECTO"] or "(Sin estado)"
+        n   = row_e["n"]
+        eu  = est.strip().upper()
+        dot_colors = {
+            "CONTRATADO EN EJECUCIÓN":       C["verde_medio"],
+            "TERMINADO":                     C["muted"],
+            "SIN CONTRATAR":                 C["cian"],
+            "PARA CIERRE":                   C["cafe"],
+            "CONTRATADO SIN ACTA DE INICIO": C["azul_medio"],
+            "SUSPENDIDO":                    C["naranja_osc"],
+        }
+        dot = dot_colors.get(eu, C["muted"])
+        estado_items += (
+            f'<div class="estado-kpi-row">'
+            f'<span class="estado-kpi-label">'
+            f'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;'
+            f'background:{dot};margin-right:5px;flex-shrink:0"></span>{est}</span>'
+            f'<span class="estado-kpi-n">{n}</span></div>'
+        )
 
 st.markdown("<div style='height:0.2rem'></div>", unsafe_allow_html=True)
 ka, kb, kd = st.columns([1.3, 1.3, 3.2])
@@ -303,22 +330,26 @@ with ka:
     <div class="kpi-main">
         <div class="label">Total proyectos</div>
         <div class="value">{total_proy}</div>
-        <div class="sub">en los filtros activos</div>
+        <div class="sub">{vista.lower()}</div>
     </div>""", unsafe_allow_html=True)
 
 with kb:
     st.markdown(f"""
-    <div class="kpi-main" style="background:{C['verde_oscuro']}">
-        <div class="label">Entidades</div>
+    <div class="kpi-main" style="border-left-color:{C['verde_oscuro']}">
+        <div class="label">{label_agrup_kpi}</div>
         <div class="value">{total_entidades}</div>
-        <div class="sub">secretarías / dependencias</div>
+        <div class="sub">{sub_agrup_kpi}</div>
     </div>""", unsafe_allow_html=True)
 
 with kd:
+    _estado_html = estado_items or (
+        "<div style='font-size:0.75rem;color:#9ca3af;font-style:italic'>"
+        "Sin datos disponibles.</div>"
+    )
     st.markdown(f"""
     <div class="kpi-estados">
         <div class="kpi-estados-title">Proyectos por estado</div>
-        <div class="kpi-estados-grid">{estado_items}</div>
+        <div class="kpi-estados-grid">{_estado_html}</div>
     </div>""", unsafe_allow_html=True)
 
 st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
