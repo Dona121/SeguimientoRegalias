@@ -1,6 +1,7 @@
 """
 app.py — Orquestador principal de la aplicación Streamlit.
-Importa todos los módulos, gestiona sidebar, filtros, KPIs y renderiza los tabs.
+Importa todos los módulos, gestiona sidebar, filtros, KPIs y renderiza
+las pestañas según la vista seleccionada (Departamento / Descentralizadas / Municipios).
 """
 from constants import (
     C, INTERVALOS, SEMAFOROS, COLS_EVAL, COLS_EVAL_LABELS,
@@ -380,20 +381,22 @@ with st.sidebar:
 # Tabs declarados condicionalmente: cada vista crea sus propios objetos tab.
 # Las tabs de Departamento se conservan con los nombres originales para
 # minimizar cambios en el código existente.
-tab_resumen = tab_proyectos = tab_evaluacion = None
-tab_d_resumen = tab_d_proyectos = tab_d_evaluacion = None
+tab_resumen = tab_proyectos = tab_alertas = tab_evaluacion = None
+tab_d_resumen = tab_d_proyectos = tab_d_alertas = tab_d_evaluacion = None
 tab_m_proyectos = None
 
 if vista == "Departamento":
-    tab_resumen, tab_proyectos, tab_evaluacion = st.tabs([
+    tab_resumen, tab_proyectos, tab_alertas, tab_evaluacion = st.tabs([
         "Resumen por entidad",
         "Todos los proyectos",
+        "Reporte semanal de alertas",
         "Evaluación del modelo",
     ])
 elif vista == "Descentralizadas":
-    tab_d_resumen, tab_d_proyectos, tab_d_evaluacion = st.tabs([
+    tab_d_resumen, tab_d_proyectos, tab_d_alertas, tab_d_evaluacion = st.tabs([
         "Resumen por entidad",
         "Proyectos",
+        "Reporte semanal de alertas",
         "Evaluación del modelo",
     ])
 elif vista == "Municipios":
@@ -848,29 +851,23 @@ if tab_proyectos is not None:
         </table>
         """, unsafe_allow_html=True)
 
-# ── TAB 3: Evaluación del modelo (solo Departamento) ─────────────────────────
+# ── TAB 3: Evaluación del modelo (solo Departamento de Sucre) ────────────────
+# Nota: la evaluación de Descentralizadas vive en su propia vista; aquí solo
+# mostramos los datos de la tabla MatrizSeguimientoEvaluacion (Sucre).
 if tab_evaluacion is not None:
   with tab_evaluacion:
     st.markdown("<div class='section-heading'>Evaluación del modelo ejecutor</div>", unsafe_allow_html=True)
-
-    modelo_sel = st.radio(
-        "Ejecutor",
-        ["Departamento de Sucre", "Descentralizadas"],
-        horizontal=True,
-        label_visibility="collapsed",
+    st.markdown(
+        f"<div style='font-size:0.78rem;color:{C['muted']};margin-bottom:1rem'>"
+        "Calificaciones promedio por entidad / secretaría (Departamento de Sucre).</div>",
+        unsafe_allow_html=True,
     )
-    st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
 
-    if modelo_sel == "Departamento de Sucre":
-        df_eval, cols_eval_ok, eval_errores, df_eval_raw = procesar_eval_sucre(file_bytes)
-        col_entidad    = "ENTIDAD O SECRETARIA"
-        label_entidad  = "Entidad / Secretaría"
-        contexto_error = "Departamento de Sucre"
-    else:
-        df_eval, cols_eval_ok, eval_errores, df_eval_raw = procesar_descentralizadas(file_bytes)
-        col_entidad    = "EJECUTOR"
-        label_entidad  = "Ejecutor"
-        contexto_error = "Descentralizadas"
+    df_eval, cols_eval_ok, eval_errores, df_eval_raw = procesar_eval_sucre(file_bytes)
+    col_entidad    = "ENTIDAD O SECRETARIA"
+    label_entidad  = "Entidad / Secretaría"
+    contexto_error = "Departamento de Sucre"
+    modelo_sel     = "Departamento de Sucre"
 
     if eval_errores:
         _render_eval_errors(eval_errores, contexto_error)
@@ -1076,8 +1073,10 @@ if tab_evaluacion is not None:
                     </table>
                     """, unsafe_allow_html=True)
 
+# ── TAB Reporte semanal de alertas (Departamento) ────────────────────────────
+if tab_alertas is not None:
+  with tab_alertas:
     # ── Reporte semanal ───────────────────────────────────────────────────────
-    st.markdown("<div style='height:1.8rem'></div>", unsafe_allow_html=True)
     st.markdown("<div class='section-heading'>Reporte semanal de alertas</div>", unsafe_allow_html=True)
     st.markdown(
         f"<div style='font-size:0.78rem;color:{C['muted']};margin-bottom:1rem'>"
@@ -1683,6 +1682,130 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
     </table>
     """, unsafe_allow_html=True)
 
+    # ── Detalle por hito (Descentralizadas) ───────────────────────────────────
+    st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-heading'>Detalle por hito</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-size:0.78rem;color:#6b7280;margin-bottom:0.8rem'>"
+        "Selecciona un hito para ver el detalle de los proyectos que lo tienen activo, "
+        "ordenados de mayor a menor tiempo.</div>",
+        unsafe_allow_html=True,
+    )
+
+    HITOS_D_OPTS = {
+        "H1 · Sin contratar sin apertura":    ("hito_1_val", "clasi_1"),
+        "H2 · Sin contratar con apertura":    ("hito_2_val", "clasi_2"),
+        "H3 · Contratado sin acta de inicio": ("hito_3_val", "clasi_3"),
+        "H4 · En ejecución rezagado":         ("hito_4_val", "clasi_4"),
+    }
+    # Solo ofrecer hitos que estén calculados en el dataframe
+    HITOS_D_OPTS = {k: v for k, v in HITOS_D_OPTS.items() if v[0] in df_descent_hitos.columns}
+
+    if not HITOS_D_OPTS:
+        st.info("No hay hitos calculados disponibles para mostrar.")
+    else:
+        sel_hito_d = st.selectbox(
+            "Hito a detallar (Descent.)",
+            list(HITOS_D_OPTS.keys()),
+            key="sel_hito_resumen_descent",
+            label_visibility="collapsed",
+        )
+        sel_hito_col_d, sel_clasi_col_d = HITOS_D_OPTS[sel_hito_d]
+        hito_key_detalle_d = HITO_KEY_MAP.get(sel_clasi_col_d, None)
+
+        DATE_COLS_DET_D = [
+            c for c in (
+                "FECHA APROBACIÓN PROYECTO", "FECHA DE APERTURA DEL PRIMER PROCESO",
+                "FECHA SUSCRIPCION", "FECHA ACTA INICIO",
+                "HORIZONTE DEL PROYECTO", "FECHA DE CORTE GESPROY",
+            ) if c in df_descent_hitos.columns
+        ]
+        nombre_col = "NOMBRE DEL PROYECTO" if "NOMBRE DEL PROYECTO" in df_descent_hitos.columns else "EJECUTOR"
+
+        df_det_d = (
+            df_descent_hitos
+            .filter(~pl.col(sel_hito_col_d).is_null())
+            .select(
+                "EJECUTOR", "BPIN", nombre_col, "ESTADO PROYECTO",
+                sel_hito_col_d, sel_clasi_col_d,
+                *DATE_COLS_DET_D,
+            )
+            .sort(["EJECUTOR", sel_hito_col_d], descending=[False, True])
+        )
+
+        if df_det_d.height == 0:
+            st.info("No hay proyectos con valor en este hito.")
+        else:
+            for ejecutor in df_det_d["EJECUTOR"].unique().sort().to_list():
+                sub  = df_det_d.filter(pl.col("EJECUTOR") == ejecutor)
+                prom = sub[sel_hito_col_d].mean()
+                n    = sub.height
+                if sel_hito_col_d == "hito_4_val" and prom is not None:
+                    prom_str = f"{prom/30.0:.1f} meses"
+                else:
+                    prom_str = f"{prom:.1f} días" if prom is not None else "—"
+
+                with st.expander(f"{ejecutor}   ·   {n} proyecto(s)   ·   Promedio: {prom_str}", expanded=False):
+                    det_rows_d = []
+                    for r in sub.to_dicts():
+                        dias_v = r[sel_hito_col_d]
+                        if dias_v is not None:
+                            if sel_hito_col_d == "hito_4_val":
+                                dias_str = f"{dias_v/30.0:.1f} m"
+                            else:
+                                dias_str = f"{dias_v:.1f} d"
+                        else:
+                            dias_str = "—"
+
+                        if dias_v is not None:
+                            if sel_hito_col_d == "hito_4_val":
+                                meses = dias_v / 30.0
+                                if   meses <= 1: clasi_v = "0-1"
+                                elif meses <= 3: clasi_v = "1.1-3"
+                                elif meses <= 6: clasi_v = "3.1-6"
+                                else:            clasi_v = ">6"
+                            else:
+                                intervalos = INTERVALOS.get(sel_hito_col_d, [])
+                                clasi_v = None
+                                for label, lo, hi in intervalos:
+                                    if hi is None and dias_v >= lo:               clasi_v = label; break
+                                    elif hi is not None and lo <= dias_v <= hi:   clasi_v = label; break
+                        else:
+                            clasi_v = None
+
+                        badge_cls_str = (
+                            _BADGE_BY_HITO.get(sel_hito_col_d, {}).get(str(clasi_v), "badge-yellow")
+                            if clasi_v else ""
+                        )
+                        row_cls = _ROW_CLS_MAP.get(badge_cls_str, "")
+
+                        tooltip  = _dias_tooltip(r, sel_hito_col_d)
+                        _bpin_h  = html.escape(str(r['BPIN'] or '—'))
+                        _nom_h   = html.escape(r.get(nombre_col) or '—')
+                        _est_h   = html.escape(r.get('ESTADO PROYECTO') or '(Sin estado)')
+                        det_rows_d.append(f"""<tr class="{row_cls}">
+                            <td><span class="bpin-tag">{_bpin_h}</span></td>
+                            <td style="font-size:0.81rem">{_nom_h}</td>
+                            <td><span class="estado-tag">{_est_h}</span></td>
+                            <td>
+                              <div class="dias-tip-wrap">
+                                <span class="dias-val-link">{dias_str}</span>
+                                {tooltip}
+                              </div>
+                            </td>
+                            <td>{badge_html(clasi_v, hito_key_detalle_d)}</td>
+                        </tr>""")
+
+                    st.markdown(f"""
+                    <table class="detail-table">
+                    <thead><tr>
+                        <th>BPIN</th><th>Nombre del proyecto</th><th>Estado</th>
+                        <th>Tiempo <span style="font-size:0.58rem;font-weight:500;opacity:0.7">(pasar el cursor)</span></th>
+                        <th>Clasificación</th>
+                    </tr></thead>
+                    <tbody>{"".join(det_rows_d)}</tbody>
+                    </table>""", unsafe_allow_html=True)
+
 elif tab_d_resumen is not None:
   with tab_d_resumen:
     st.warning("No se encontró la tabla **OtrosEjecutoresDescentralizadas** en el archivo, "
@@ -1773,48 +1896,340 @@ elif tab_d_proyectos is not None:
 
 if tab_d_evaluacion is not None:
   with tab_d_evaluacion:
-    st.markdown("<div class='section-heading'>Evaluación · Descentralizadas</div>",
+    st.markdown("<div class='section-heading'>Evaluación del modelo ejecutor</div>",
                 unsafe_allow_html=True)
-    if _df_eval_desc is None or not _cols_eval_desc:
-        st.info("Sin datos de evaluación para Descentralizadas.")
-    else:
-        df_eval_pd = _df_eval_desc.to_pandas()
-        # Render simple — usa colormap por valor de calificación
-        rows_html_e = ""
-        for _, r in df_eval_pd.iterrows():
-            ent = html.escape(str(r.get("EJECUTOR") or ""))
-            cells = ""
-            valid = []
-            for col in _cols_eval_desc:
-                v = r.get(col)
-                try:
-                    fv = float(v) if v is not None else None
-                except Exception:
-                    fv = None
-                if fv is not None and fv == fv:
-                    color, _label = eval_color(fv)
-                    cells += (f"<td style='text-align:center;background:{color}22;"
-                              f"color:{color};font-weight:700'>{fv:.1f}</td>")
-                    valid.append(fv)
-                else:
-                    cells += "<td style='text-align:center;color:#9CA3AF'>—</td>"
-            prom = round(sum(valid)/len(valid), 1) if valid else None
-            if prom is not None:
-                color, label = eval_color(prom)
-                prom_cell = (f"<td style='text-align:center;background:{color};color:white;"
-                             f"font-weight:700'>{prom:.1f} · {label}</td>")
-            else:
-                prom_cell = "<td style='text-align:center;color:#9CA3AF'>—</td>"
-            rows_html_e += f"<tr><td class='entidad-name'>{ent}</td>{cells}{prom_cell}</tr>"
+    st.markdown(
+        f"<div style='font-size:0.78rem;color:{C['muted']};margin-bottom:1rem'>"
+        "Calificaciones promedio por ejecutor (Entidades Descentralizadas).</div>",
+        unsafe_allow_html=True,
+    )
 
-        labels_html = "".join(f"<th>{html.escape(c.replace('CALIFICACIÓN ','').title())}</th>"
-                              for c in _cols_eval_desc)
-        st.markdown(f"""
-        <table class="summary-table">
-        <thead><tr><th>Ejecutor</th>{labels_html}<th>Promedio</th></tr></thead>
-        <tbody>{rows_html_e}</tbody>
-        </table>
-        """, unsafe_allow_html=True)
+    # Re-procesar para obtener (df_eval, cols_ok, errores, df_raw) — mismo
+    # contrato que procesar_eval_sucre.
+    df_eval_d, cols_eval_ok_d, eval_errores_d, df_eval_raw_d = procesar_descentralizadas(file_bytes)
+
+    if eval_errores_d:
+        _render_eval_errors(eval_errores_d, "Descentralizadas")
+
+    if df_eval_d is None or df_eval_d.height == 0:
+        st.info("No se encontraron datos de evaluación para Descentralizadas.")
+    else:
+        col_entidad_d   = "EJECUTOR"
+        label_entidad_d = "Ejecutor"
+        max_score_d     = 100.0
+
+        tabs_eval_d = st.tabs([
+            "Desempeño en contratación",
+            "Información a tiempo",
+            "Ejecución del proyecto",
+            "Calidad de la información",
+        ])
+
+        for i, (col_cal, label_cal) in enumerate(zip(COLS_EVAL, COLS_EVAL_LABELS)):
+            with tabs_eval_d[i]:
+                if col_cal not in cols_eval_ok_d:
+                    st.info(f"No hay datos disponibles para «{label_cal}» debido a errores en el archivo.")
+                    continue
+
+                filas_d = []
+                for row in df_eval_d.sort(col_cal, descending=True, nulls_last=True).to_dicts():
+                    nombre = row.get(col_entidad_d) or "Sin nombre"
+                    score  = row.get(col_cal)
+
+                    comentario_html = "—"
+                    if df_eval_raw_d is not None and col_cal in df_eval_raw_d.columns:
+                        sub         = df_eval_raw_d.filter(pl.col(col_entidad_d) == nombre)
+                        n_total     = sub.height
+                        n_con_cal   = int(sub[col_cal].drop_nulls().len())
+                        n_no_aplica = n_total - n_con_cal
+                        n_cero      = int((sub[col_cal] == 0).sum())   if n_con_cal > 0 else 0
+                        n_max       = int((sub[col_cal] == 100).sum()) if n_con_cal > 0 else 0
+                        vals_ok     = sub[col_cal].drop_nulls()
+                        v_min       = float(vals_ok.min()) if n_con_cal > 0 else None
+                        v_max_v     = float(vals_ok.max()) if n_con_cal > 0 else None
+
+                        def _bpin_proy_d(val_filtro):
+                            f = sub.filter(pl.col(col_cal) == val_filtro)
+                            if f.height == 0: return None
+                            bp = (f.to_dicts()[0].get("BPIN") or "").strip()
+                            return bp if bp else None
+
+                        proy_bajo = _bpin_proy_d(v_min)   if v_min  is not None and v_min  < 60  else None
+                        proy_alto = _bpin_proy_d(v_max_v) if v_max_v is not None and v_max_v >= 80 else None
+
+                        partes = []
+                        if score is None:
+                            partes.append(
+                                f"Ninguno de los <strong>{n_total} proyecto(s)</strong> de este ejecutor "
+                                f"aplica para este criterio."
+                            )
+                            comentario_html = " ".join(partes)
+                            filas_d.append(f"""<tr>
+                                <td class="entidad-name">{html.escape(nombre)}</td>
+                                <td style="color:{C['muted']}">—</td>
+                                <td class="eval-comment eval-no-aplica">{comentario_html}</td>
+                            </tr>""")
+                            continue
+
+                        if n_no_aplica == 0:
+                            partes.append(
+                                f"Calificación calculada sobre los "
+                                f"<strong>{n_con_cal} {'proyecto' if n_con_cal == 1 else 'proyectos'}</strong> "
+                                f"del ejecutor que aplican para este criterio."
+                            )
+                        else:
+                            partes.append(
+                                f"Calificación calculada sobre "
+                                f"<strong>{n_con_cal} de {n_total} proyectos</strong>. "
+                                f"Los {n_no_aplica} restantes son <em>no aplicables</em>."
+                            )
+
+                        if v_min is not None and v_max_v is not None and n_con_cal > 1:
+                            diferencia = v_max_v - v_min
+                            if diferencia < 10:
+                                partes.append(
+                                    f"Los resultados son homogéneos "
+                                    f"(entre {v_min:.0f} y {v_max_v:.0f} puntos)."
+                                )
+                            elif diferencia >= 50:
+                                partes.append(
+                                    f"Existe una brecha importante: el resultado más bajo fue "
+                                    f"{v_min:.0f} puntos y el más alto {v_max_v:.0f}."
+                                )
+                            else:
+                                partes.append(
+                                    f"Los proyectos obtuvieron resultados entre "
+                                    f"{v_min:.0f} y {v_max_v:.0f} puntos."
+                                )
+
+                        if n_cero == 1:
+                            extra = f" (BPIN {html.escape(proy_bajo)})" if proy_bajo and v_min == 0 else ""
+                            partes.append(
+                                f"Un proyecto{extra} obtuvo cero puntos, lo que reduce el promedio."
+                            )
+                        elif n_cero > 1:
+                            partes.append(
+                                f"{n_cero} proyectos obtuvieron cero puntos, lo que arrastra el promedio."
+                            )
+                        elif proy_bajo:
+                            partes.append(
+                                f"El proyecto con menor resultado es el BPIN {html.escape(proy_bajo)} "
+                                f"con {v_min:.0f} puntos."
+                            )
+
+                        if n_max == 1 and n_con_cal > 1:
+                            extra = f" (BPIN {html.escape(proy_alto)})" if proy_alto else ""
+                            partes.append(f"Por otro lado, un proyecto{extra} alcanzó 100 puntos.")
+                        elif n_max > 1:
+                            partes.append(f"Por otro lado, {n_max} proyectos alcanzaron 100 puntos.")
+                        elif proy_alto and n_max == 0 and n_con_cal > 1:
+                            partes.append(
+                                f"El proyecto con mejor desempeño es el BPIN "
+                                f"{html.escape(proy_alto)} con {v_max_v:.0f} puntos."
+                            )
+                        comentario_html = " ".join(partes) if partes else "—"
+
+                    color_bar, _nivel = eval_color(score, max_score_d)
+                    bg_map = {
+                        C["verde_medio"]: "#d1fae5",
+                        C["cian"]:        "#e0f7fa",
+                        C["naranja"]:     "#fff7ed",
+                        C["salmon"]:      "#fee2e2",
+                    }
+                    bg_pill = bg_map.get(color_bar, "#f1f5f9")
+                    filas_d.append(f"""<tr>
+                        <td class="entidad-name">{html.escape(nombre)}</td>
+                        <td style="white-space:nowrap">
+                            <span class="eval-score-pill" style="background:{bg_pill};color:{color_bar}">
+                                {score:.2f}
+                            </span>
+                        </td>
+                        <td class="eval-comment">{comentario_html}</td>
+                    </tr>""")
+
+                if not filas_d:
+                    st.info("No hay registros con calificación para este criterio.")
+                else:
+                    st.markdown(f"""
+                    <table class="eval-table">
+                    <thead><tr>
+                        <th style="width:22%">{label_entidad_d}</th>
+                        <th style="width:14%">Calificación promedio &nbsp;(escala 0–{max_score_d:.0f})</th>
+                        <th>Comentario</th>
+                    </tr></thead>
+                    <tbody>{"".join(filas_d)}</tbody>
+                    </table>
+                    """, unsafe_allow_html=True)
+
+# ── TAB Reporte semanal de alertas (Descentralizadas) ────────────────────────
+if tab_d_alertas is not None and df_descent_hitos is not None:
+  with tab_d_alertas:
+    st.markdown("<div class='section-heading'>Reporte semanal de alertas</div>",
+                unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='font-size:0.78rem;color:{C['muted']};margin-bottom:1rem'>"
+        "Conteo de proyectos con semáforo <strong>naranja, rojo o negro</strong> por ejecutor "
+        "y estado, basado en los hitos 1-4 de Descentralizadas.</div>",
+        unsafe_allow_html=True,
+    )
+
+    ALERTAS_NRN_D = {
+        "hito_1_val": ["101-150", "151-180", ">180"],
+        "hito_2_val": ["101-150", "151-180", ">180"],
+        "hito_3_val": ["16-30", "31-45", ">45"],
+        "hito_4_val": ["1.1-3", "3.1-6", ">6"],
+    }
+    ALERTA_COLOR_D = {
+        "101-150": (C["naranja"], "#fff7ed"), "31-45":   (C["naranja"], "#fff7ed"),
+        "1.1-3":   (C["naranja"], "#fff7ed"), "16-30":   (C["naranja"], "#fff7ed"),
+        "151-180": (C["naranja_osc"], "#ffedd5"), "46-60": (C["naranja_osc"], "#ffedd5"),
+        "3.1-6":   (C["naranja_osc"], "#ffedd5"),
+        ">180":    (C["text"], "#e2e8f0"), ">60": (C["text"], "#e2e8f0"),
+        ">6":      (C["text"], "#e2e8f0"), ">45": (C["text"], "#e2e8f0"),
+    }
+    def _pill_alerta_d(clasi):
+        fg, bg = ALERTA_COLOR_D.get(clasi, (C["muted"], "#f1f5f9"))
+        return (
+            f'<span style="display:inline-block;background:{bg};color:{fg};'
+            f'border:1px solid {fg}40;border-radius:12px;padding:1px 7px;'
+            f'font-size:0.63rem;font-weight:700;margin:1px 2px;white-space:nowrap">'
+            f'{clasi}</span>'
+        )
+
+    def _comentario_reporte_d(estado_up, conteos_hito, n_total_estado):
+        partes = []
+        n_alerta = sum(conteos_hito.values())
+        if n_alerta == 0:
+            return "Ningún proyecto presenta alertas en este estado."
+        pct = round(n_alerta / n_total_estado * 100) if n_total_estado else 0
+        partes.append(
+            f"<strong>{n_alerta} de {n_total_estado} proyecto(s)</strong> ({pct}%) "
+            f"presentan alertas que requieren atención."
+        )
+        if estado_up == "SIN CONTRATAR":
+            n_negro = conteos_hito.get(">180", 0)
+            if n_negro > 0:
+                partes.append(
+                    f"<strong>{n_negro} proyecto(s) en alerta negra</strong> "
+                    f"(más de 180 días sin avance)."
+                )
+        elif estado_up == "CONTRATADO SIN ACTA DE INICIO":
+            n_negro = conteos_hito.get(">45", 0)
+            if n_negro:
+                partes.append(f"<strong>{n_negro}</strong> superan los 45 días sin acta de inicio.")
+        elif estado_up == "CONTRATADO EN EJECUCIÓN":
+            n_negro = conteos_hito.get(">6", 0)
+            if n_negro:
+                partes.append(
+                    f"<strong>{n_negro}</strong> con más de 6 meses de horizonte vencido."
+                )
+        return " ".join(partes)
+
+    REPORTE_CONFIG_D = [
+        {"estado": "SIN CONTRATAR", "label": "Sin contratar",
+         "hitos": [("clasi_1", "hito_1_val"), ("clasi_2", "hito_2_val")],
+         "color_est": (C["cian"], "#e0f7fa")},
+        {"estado": "CONTRATADO SIN ACTA DE INICIO", "label": "Contratado sin acta de inicio",
+         "hitos": [("clasi_3", "hito_3_val")],
+         "color_est": (C["azul_medio"], "#dbeafe")},
+        {"estado": "CONTRATADO EN EJECUCIÓN", "label": "Contratado en ejecución",
+         "hitos": [("clasi_4", "hito_4_val")],
+         "color_est": (C["verde_medio"], "#d1fae5")},
+    ]
+
+    ejecutores_rep = sorted(df_descent_hitos["EJECUTOR"].drop_nulls().unique().to_list())
+    reporte_rows_d = []
+    for cfg in REPORTE_CONFIG_D:
+        estado_up = cfg["estado"]
+        df_estado = df_descent_hitos.filter(pl.col("ESTADO PROYECTO") == estado_up)
+        n_total_est = df_estado.height
+        if n_total_est == 0:
+            continue
+
+        conteos_global: dict = {}
+        for clasi_col, hito_col in cfg["hitos"]:
+            if clasi_col not in df_descent_hitos.columns:
+                continue
+            for alerta in ALERTAS_NRN_D.get(hito_col, []):
+                n = int(df_estado.filter(pl.col(clasi_col) == alerta).height)
+                if n > 0:
+                    conteos_global[alerta] = conteos_global.get(alerta, 0) + n
+        n_total_alerta = sum(conteos_global.values())
+
+        filas_eje = []
+        for eje in ejecutores_rep:
+            df_eje = df_estado.filter(pl.col("EJECUTOR") == eje)
+            if df_eje.height == 0:
+                continue
+            conteos_eje: dict = {}
+            for clasi_col, hito_col in cfg["hitos"]:
+                if clasi_col not in df_descent_hitos.columns:
+                    continue
+                for alerta in ALERTAS_NRN_D.get(hito_col, []):
+                    n = int(df_eje.filter(pl.col(clasi_col) == alerta).height)
+                    if n > 0:
+                        conteos_eje[alerta] = conteos_eje.get(alerta, 0) + n
+            n_eje_alerta = sum(conteos_eje.values())
+            if n_eje_alerta == 0:
+                continue
+            pills = "".join(_pill_alerta_d(k) for k in sorted(conteos_eje, key=lambda x: conteos_eje[x], reverse=True))
+            filas_eje.append((eje, df_eje.height, n_eje_alerta, pills, conteos_eje))
+
+        if not filas_eje:
+            continue
+
+        fg_est, bg_est = cfg["color_est"]
+        reporte_rows_d.append(
+            f'<tr style="background:{bg_est}20">'
+            f'<td colspan="4" style="padding:0.55rem 0.9rem;border-bottom:2px solid {fg_est}30">'
+            f'<span style="font-family:\'Montserrat\',sans-serif;font-size:0.67rem;font-weight:800;'
+            f'text-transform:uppercase;letter-spacing:0.8px;color:{fg_est}">'
+            f'{cfg["label"]}</span>'
+            f'<span style="font-size:0.7rem;color:{C["muted"]};font-weight:400;margin-left:0.6rem">'
+            f'{n_total_est} proyecto(s) en este estado · {n_total_alerta} con alerta</span>'
+            f'</td></tr>'
+        )
+        for eje, n_eje_total, n_eje_alerta, pills_html, conteos_eje in filas_eje:
+            com_eje = _comentario_reporte_d(estado_up, conteos_eje, n_eje_alerta)
+            reporte_rows_d.append(f"""<tr>
+                <td style="font-weight:600;font-size:0.81rem;color:{C['azul_oscuro']};
+                    padding:0.65rem 0.9rem;vertical-align:top">{html.escape(eje)}</td>
+                <td style="padding:0.65rem 0.9rem;vertical-align:top">
+                    <span style="display:inline-block;background:{bg_est};color:{fg_est};
+                        border:1px solid {fg_est}40;border-radius:12px;padding:2px 9px;
+                        font-size:0.65rem;font-weight:700;white-space:nowrap">
+                        {html.escape(cfg['label'])}
+                    </span>
+                </td>
+                <td style="padding:0.65rem 0.9rem;vertical-align:top;text-align:center">
+                    <div style="font-family:'DM Mono',monospace;font-size:1.1rem;font-weight:800;
+                        color:{C['azul_oscuro']};line-height:1">{n_eje_alerta}</div>
+                    <div style="font-size:0.62rem;color:{C['muted']};margin-top:2px">de {n_eje_total}</div>
+                    <div style="margin-top:4px">{pills_html}</div>
+                </td>
+                <td style="padding:0.65rem 0.9rem;vertical-align:top;
+                    font-size:0.75rem;color:{C['text']};line-height:1.6">{com_eje}</td>
+            </tr>""")
+
+    _color_muted_d = C["muted"]
+    st.markdown(f"""
+    <table class="reporte-table">
+    <thead><tr>
+        <th style="width:22%">Ejecutor</th>
+        <th style="width:24%">Estado del proyecto</th>
+        <th style="width:15%">N.° proyectos<br>con alerta</th>
+        <th>Comentario</th>
+    </tr></thead>
+    <tbody>{"".join(reporte_rows_d) if reporte_rows_d else
+        f'<tr><td colspan="4" style="padding:1.2rem;color:{_color_muted_d};font-style:italic;text-align:center">'
+        f'No se encontraron proyectos con alertas naranja, roja o negra.</td></tr>'
+    }
+    </tbody></table>
+    """, unsafe_allow_html=True)
+
+elif tab_d_alertas is not None:
+  with tab_d_alertas:
+    st.warning("No se encontró la tabla **OtrosEjecutoresDescentralizadas**.")
 
 
 # ═════════════════════════════════════════════════════════════════════════════

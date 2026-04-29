@@ -1104,6 +1104,76 @@ def inject_css():
         white-space: nowrap;
         text-align: right;
     }}
+
+    /* ── Tablas de proyectos (Departamento, Descentralizadas, Municipios) ── */
+    .proy-table {{
+        width: 100%; border-collapse: collapse; font-size: 0.83rem;
+        background: #ffffff; border-radius: 12px; overflow: hidden;
+        box-shadow: 0 2px 20px rgba(0,40,90,0.10);
+    }}
+    .proy-table thead tr {{ background: {C['azul_oscuro']}; color: white; }}
+    .proy-table th {{
+        padding: 0.85rem 1rem; font-family: 'Montserrat', sans-serif;
+        font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.8px; text-align: left; white-space: nowrap;
+    }}
+    .proy-table td {{
+        padding: 0.85rem 1rem; border-bottom: 1px solid {C['border']};
+        vertical-align: middle;
+    }}
+    .proy-table tbody tr:last-child td {{ border-bottom: none; }}
+    .proy-table tbody tr.proy-data-row:hover td {{
+        background: #eef5ff !important; transition: background 0.15s;
+    }}
+    .proy-ent    {{ font-weight:700; font-size:0.8rem; color:{C['azul_oscuro']}; white-space:nowrap; }}
+    .proy-nombre {{ font-size:0.82rem; color:{C['text']}; line-height:1.5; }}
+    .proy-pill {{
+        display:inline-block; font-size:0.68rem; padding:4px 11px;
+        border-radius:20px; font-weight:600; white-space:nowrap;
+        font-family:'Montserrat',sans-serif;
+    }}
+    .proy-pill--empty {{ color:{C['muted']}; font-weight:400; }}
+
+    /* ── Tabla de evaluación (criterios, comentarios) ── */
+    .eval-table {{
+        width: 100%; border-collapse: collapse; font-size: 0.83rem;
+        background: #ffffff; border-radius: 8px; overflow: hidden; margin-bottom: 0.5rem;
+    }}
+    .eval-table thead tr {{ background: {C['azul_oscuro']}; color: white; }}
+    .eval-table th {{
+        padding: 0.65rem 1rem; font-size: 0.63rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.8px; text-align: left;
+    }}
+    .eval-table td {{
+        padding: 0.6rem 1rem; border-bottom: 1px solid {C['border']};
+        vertical-align: top; background: #ffffff;
+    }}
+    .eval-table tbody tr:nth-child(even) td {{ background: #f7fafd; }}
+    .eval-table tbody tr:last-child td {{ border-bottom: none; }}
+    .eval-table tbody tr:hover td {{ background: #e8f3ff !important; }}
+    .eval-score-pill {{
+        font-family: 'DM Mono', monospace; font-weight: 700; font-size: 0.88rem;
+        padding: 3px 12px; border-radius: 20px; display: inline-block;
+    }}
+    .eval-comment {{ font-size: 0.75rem; color: {C['muted']}; line-height: 1.6; }}
+    .eval-comment strong {{ color: {C['text']}; font-weight: 600; }}
+    .eval-no-aplica {{ font-size: 0.72rem; color: {C['muted']}; font-style: italic; }}
+
+    /* ── Reporte semanal de alertas ── */
+    .reporte-table {{
+        width: 100%; border-collapse: collapse; font-size: 0.83rem;
+        background: #ffffff; border-radius: 10px; overflow: hidden;
+        box-shadow: 0 2px 16px rgba(0,40,90,0.09);
+    }}
+    .reporte-table thead tr {{ background: {C['azul_oscuro']}; color: white; }}
+    .reporte-table th {{
+        padding: 0.7rem 0.9rem; font-family: 'Montserrat', sans-serif;
+        font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.8px; text-align: left;
+    }}
+    .reporte-table td {{ border-bottom: 1px solid {C['border']}; }}
+    .reporte-table tbody tr:last-child td {{ border-bottom: none; }}
+    .reporte-table tbody tr:hover td {{ background: #f0f6ff !important; transition: background 0.12s; }}
     </style>
     """, unsafe_allow_html=True)
 
