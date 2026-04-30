@@ -43,7 +43,7 @@ inject_css()
 
 with st.sidebar:
     # ── Selector de vista (controla qué se muestra en el área principal) ─────
-    st.markdown("<div class='sidebar-section'>👁 Vista</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-section'>Vista</div>", unsafe_allow_html=True)
     vista = st.radio(
         "Vista",
         ["Departamento", "Descentralizadas", "Municipios"],
@@ -56,7 +56,7 @@ with st.sidebar:
         ),
     )
 
-    st.markdown("<div class='sidebar-section'>📁 Datos</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-section'>Datos</div>", unsafe_allow_html=True)
 
     # ── Botón de recarga ──────────────────────────────────────────────────────
     # Limpia el caché de _cargar_desde_github (que tiene ttl=3600) para forzar
@@ -76,7 +76,7 @@ with st.sidebar:
             f"Sube un archivo para usar datos distintos.</p>",
             unsafe_allow_html=True,
         )
-    st.markdown("<div class='sidebar-section'>📋 Contratos</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-section'>Contratos</div>", unsafe_allow_html=True)
     uploaded_cttos = st.file_uploader(
         "Archivo de contratos (CG-cttos)",
         type=["xlsx"],
@@ -386,7 +386,7 @@ _df_eval_desc,  _cols_eval_desc,  _, _df_eval_desc_raw  = procesar_descentraliza
 # Incluye Departamento, Descentralizadas y Municipios consolidados.
 # ─────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("<div class='sidebar-section'>📥 Exportar</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-section'>Exportar</div>", unsafe_allow_html=True)
     st.download_button(
         label="Descargar reporte Excel",
         data=generar_excel(
