@@ -99,7 +99,15 @@ def _cast_numeric_safe(df, cols):
             for c in cols if c in df.columns]
 
 
-def procesar(file_bytes):
+def procesar(file_bytes, fecha_corte_override=None):
+    """
+    Procesa la tabla de Departamento y calcula hitos.
+
+    fecha_corte_override : date | None
+        Si se pasa, sobreescribe la columna FECHA DE CORTE GESPROY con esta
+        fecha (típicamente "hoy" en zona horaria local). Si es None se usa la
+        fecha de corte que viene en el archivo (comportamiento por defecto).
+    """
     df = pl.read_excel(io.BytesIO(file_bytes), table_name=TABLA_ESPERADA)
 
     DATE_COLS = [
@@ -112,7 +120,8 @@ def procesar(file_bytes):
 
     # Columnas opcionales — solo las incluimos si están presentes
     extra_cols = [c for c in (AVANCE_FISICO_DEPTO, AVANCE_FINANCIERO,
-                              "RESPONSABLE CARGUE EN GESPROY") if c in df.columns]
+                              "RESPONSABLE CARGUE EN GESPROY",
+                              "COMENTARIOS CALIFICACIÓN", "SECTOR") if c in df.columns]
 
     df = (
         df.select(
@@ -125,12 +134,25 @@ def procesar(file_bytes):
         .with_columns(cast_exprs + _cast_numeric_safe(
             df, [AVANCE_FISICO_DEPTO, AVANCE_FINANCIERO]
         ))
+    )
+
+    # Override de fecha de corte ANTES de calcular hitos
+    if fecha_corte_override is not None:
+        df = df.with_columns(
+            pl.lit(fecha_corte_override).cast(pl.Date).alias("FECHA DE CORTE GESPROY")
+        )
+
+    df = (
+        df
         .with_columns(
-            # Hito 1 — omitir si la fecha de aprobación es posterior a la fecha de corte
+            # Hito 1 — solo proyectos SIN CONTRATAR sin apertura de proceso
+            # precontractual. Si el proyecto ya tiene apertura, pasa a Hito 2 y
+            # NO se cuenta también aquí (regla de no duplicidad H1/H2).
             pl.when(
                 ((pl.col("ESTADO PROYECTO") == "SIN CONTRATAR") | pl.col("ESTADO PROYECTO").is_null() | (pl.col("ESTADO PROYECTO") == "")) &
                 (~pl.col("FECHA APROBACIÓN PROYECTO").is_null()) & (~pl.col("FECHA DE CORTE GESPROY").is_null()) &
-                (pl.col("FECHA APROBACIÓN PROYECTO") <= pl.col("FECHA DE CORTE GESPROY"))
+                (pl.col("FECHA APROBACIÓN PROYECTO") <= pl.col("FECHA DE CORTE GESPROY")) &
+                pl.col("FECHA DE APERTURA DEL PRIMER PROCESO").is_null()
             ).then((pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA APROBACIÓN PROYECTO")).dt.total_days()).otherwise(None).alias("hito_1_val"),
             # Hito 2 — días desde la apertura del primer proceso precontractual
             # hasta la fecha de corte GESPROY, mientras el proyecto siga sin contratar.
@@ -590,12 +612,17 @@ def procesar_contratos(file_bytes):
 # DESCENTRALIZADAS — cálculo de hitos (1-4, sin Hito 5: no hay FECHA DE FINALIZACIÓN)
 # ─────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=False)
-def procesar_descentralizadas_hitos(file_bytes):
+def procesar_descentralizadas_hitos(file_bytes, fecha_corte_override=None):
     """
     Lee la tabla OtrosEjecutoresDescentralizadas y devuelve un DataFrame con
     los hitos calculados (1-4 únicamente — esta tabla no contiene
     FECHA DE FINALIZACIÓN así que no aplica el Hito 5).
     Agrupa lógicamente por EJECUTOR (no ENTIDAD O SECRETARIA).
+
+    fecha_corte_override : date | None
+        Si se pasa, sobreescribe FECHA DE CORTE GESPROY con esta fecha antes
+        de calcular los hitos. Útil para ver "como si la fecha de corte
+        fuera hoy".
     Retorna None si la tabla no existe o falla.
     """
     try:
@@ -630,15 +657,29 @@ def procesar_descentralizadas_hitos(file_bytes):
         ))
     )
 
+    # Override de fecha de corte ANTES de calcular hitos
+    if fecha_corte_override is not None and "FECHA DE CORTE GESPROY" in df.columns:
+        df = df.with_columns(
+            pl.lit(fecha_corte_override).cast(pl.Date).alias("FECHA DE CORTE GESPROY")
+        )
+
     # Hitos — mismas fórmulas que Departamento, pero sin Hito 5
+    # Regla de no duplicidad H1/H2: si el proyecto tiene apertura del primer
+    # proceso, va al Hito 2 únicamente.
     hito_exprs = []
     if all(c in df.columns for c in ("FECHA APROBACIÓN PROYECTO", "FECHA DE CORTE GESPROY")):
+        cond_sin_apertura = (
+            pl.col("FECHA DE APERTURA DEL PRIMER PROCESO").is_null()
+            if "FECHA DE APERTURA DEL PRIMER PROCESO" in df.columns
+            else pl.lit(True)
+        )
         hito_exprs.append(
             pl.when(
                 ((pl.col("ESTADO PROYECTO") == "SIN CONTRATAR") | pl.col("ESTADO PROYECTO").is_null() | (pl.col("ESTADO PROYECTO") == "")) &
                 (~pl.col("FECHA APROBACIÓN PROYECTO").is_null()) &
                 (~pl.col("FECHA DE CORTE GESPROY").is_null()) &
-                (pl.col("FECHA APROBACIÓN PROYECTO") <= pl.col("FECHA DE CORTE GESPROY"))
+                (pl.col("FECHA APROBACIÓN PROYECTO") <= pl.col("FECHA DE CORTE GESPROY")) &
+                cond_sin_apertura
             ).then(
                 (pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA APROBACIÓN PROYECTO")).dt.total_days()
             ).otherwise(None).alias("hito_1_val")
@@ -726,7 +767,8 @@ def procesar_municipios(file_bytes):
 
     deseadas = [
         "EJECUTOR", "BPIN",
-        "NOMBRE DEL PROYECTO", "ESTADO PROYECTO", "ESTADO CONTRATO",
+        "NOMBRE DEL PROYECTO", "SECTOR",
+        "ESTADO PROYECTO", "ESTADO CONTRATO",
         AVANCE_FISICO_OTROS, AVANCE_FINANCIERO,
     ]
     presentes = [c for c in deseadas if c in df.columns]

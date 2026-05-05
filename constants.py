@@ -1191,6 +1191,59 @@ def inject_css():
     .reporte-table td {{ border-bottom: 1px solid {C['border']}; }}
     .reporte-table tbody tr:last-child td {{ border-bottom: none; }}
     .reporte-table tbody tr:hover td {{ background: #f0f6ff !important; transition: background 0.12s; }}
+
+    /* ── Tooltip de COMENTARIOS CALIFICACIÓN (Detalle por hito) ── */
+    .coment-wrap {{ position: relative; display: inline-block; cursor: help; }}
+    .coment-wrap .estado-tag {{ border-bottom: 1px dotted {C['azul_medio']}; }}
+    .coment-tip-box {{
+        display: none;
+        position: fixed;
+        background: #1a2332;
+        color: rgba(255,255,255,0.92);
+        border-radius: 8px;
+        padding: 0.75rem 0.95rem;
+        width: 320px;
+        max-height: 220px;
+        overflow-y: auto;
+        font-size: 0.74rem;
+        line-height: 1.55;
+        z-index: 99999;
+        box-shadow: 0 8px 28px rgba(0,20,60,0.35);
+        pointer-events: none;
+        white-space: normal;
+    }}
+    .coment-tip-box::after {{
+        content: '';
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 6px solid transparent;
+    }}
+    .coment-tip-box.tip-abajo::after {{
+        bottom: 100%;
+        border-bottom-color: #1a2332;
+    }}
+    .coment-tip-box.tip-arriba::after {{
+        top: 100%;
+        border-top-color: #1a2332;
+    }}
+    .coment-tip-title {{
+        font-family: 'Montserrat', sans-serif;
+        font-size: 0.6rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: {C['cian']};
+        margin-bottom: 0.4rem;
+    }}
+    .coment-tip-body {{
+        color: rgba(255,255,255,0.88);
+        word-break: break-word;
+    }}
+    .coment-tip-empty {{
+        color: rgba(255,255,255,0.5);
+        font-style: italic;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -1343,6 +1396,16 @@ def inject_css():
           if (!tip) return;
           badge.addEventListener('mouseenter', function() { positionTipSmall(badge, tip, 110, 240); });
           badge.addEventListener('mouseleave', function() { tip.style.display = 'none'; });
+        });
+
+        // Tooltip de COMENTARIOS CALIFICACIÓN (Detalle por hito)
+        doc.querySelectorAll('.coment-wrap').forEach(function(wrap) {
+          if (wrap._comentInit) return;
+          wrap._comentInit = true;
+          var tip = wrap.querySelector('.coment-tip-box');
+          if (!tip) return;
+          wrap.addEventListener('mouseenter', function() { positionTipSmall(wrap, tip, 180, 320); });
+          wrap.addEventListener('mouseleave', function() { tip.style.display = 'none'; });
         });
       }
 

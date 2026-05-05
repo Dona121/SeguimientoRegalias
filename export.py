@@ -672,8 +672,10 @@ def _sheet_detalle_munic(wb, df_munic):
         ("Ejecutor (Municipio)", 32, "EJECUTOR"),
         ("BPIN",                 14, "BPIN"),
         ("Nombre del proyecto",  42, "NOMBRE DEL PROYECTO"),
-        ("Estado proyecto",      20, "ESTADO PROYECTO"),
     ]
+    if "SECTOR" in df_munic.columns:
+        base.append(("Sector", 22, "SECTOR"))
+    base.append(("Estado proyecto", 20, "ESTADO PROYECTO"))
     if "ESTADO CONTRATO" in df_munic.columns:
         base.append(("Estado contrato", 16, "ESTADO CONTRATO"))
     if "AVANCE FÍSICO" in df_munic.columns:

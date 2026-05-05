@@ -56,6 +56,34 @@ with st.sidebar:
         ),
     )
 
+    # ── Selector de fecha de corte para los hitos ───────────────────────────
+    # "Del archivo" usa la columna FECHA DE CORTE GESPROY tal cual la trae el
+    # Excel. "Hoy" la sobreescribe con la fecha actual de Bogotá, útil para
+    # ver el avance en tiempo real sin esperar a un nuevo cargue.
+    try:
+        from zoneinfo import ZoneInfo
+        _hoy_bog = _dt.datetime.now(ZoneInfo("America/Bogota")).date()
+    except Exception:
+        _hoy_bog = date.today()
+
+    st.markdown("<div class='sidebar-section'>Fecha de corte</div>", unsafe_allow_html=True)
+    _opciones_corte = {
+        "Del archivo (GESPROY)": None,
+        f"Hoy · {_hoy_bog.strftime('%d/%m/%Y')}": _hoy_bog,
+    }
+    _corte_label = st.radio(
+        "Fecha de corte",
+        list(_opciones_corte.keys()),
+        label_visibility="collapsed",
+        key="fecha_corte_modo",
+        help=(
+            "Selecciona qué fecha se usa como referencia para calcular los hitos:\n"
+            "• Del archivo: usa la fecha registrada en GESPROY al momento del cargue.\n"
+            "• Hoy: recalcula todos los hitos con la fecha actual de Bogotá."
+        ),
+    )
+    fecha_corte_override = _opciones_corte[_corte_label]
+
     st.markdown("<div class='sidebar-section'>Datos</div>", unsafe_allow_html=True)
 
     # ── Botón de recarga ──────────────────────────────────────────────────────
@@ -189,8 +217,9 @@ if errores:
     st.stop()
 
 try:
-    df = procesar(file_bytes)
-    df_descent_hitos = procesar_descentralizadas_hitos(file_bytes)
+    df = procesar(file_bytes, fecha_corte_override=fecha_corte_override)
+    df_descent_hitos = procesar_descentralizadas_hitos(file_bytes,
+                                                       fecha_corte_override=fecha_corte_override)
     df_municipios    = procesar_municipios(file_bytes)
 except Exception as e:
     msg = str(e)
@@ -513,14 +542,18 @@ if tab_resumen is not None:
         "FECHA SUSCRIPCION", "FECHA ACTA INICIO", "HORIZONTE DEL PROYECTO",
         "FECHA DE FINALIZACIÓN", "FECHA DE CORTE GESPROY",
     ]
+    # Incluimos COMENTARIOS CALIFICACIÓN si está presente — se usa como
+    # tooltip al pasar el cursor sobre el estado del proyecto.
+    _select_cols_det = ["ENTIDAD O SECRETARIA", "BPIN", "NOMBRE PROYECTO",
+                         "ESTADO PROYECTO", sel_hito_col_r, sel_clasi_col_r,
+                         *DATE_COLS_DET]
+    if "COMENTARIOS CALIFICACIÓN" in df.columns:
+        _select_cols_det.append("COMENTARIOS CALIFICACIÓN")
+
     df_det = (
         df
         .filter(~pl.col(sel_hito_col_r).is_null())
-        .select(
-            "ENTIDAD O SECRETARIA", "BPIN", "NOMBRE PROYECTO", "ESTADO PROYECTO",
-            sel_hito_col_r, sel_clasi_col_r,
-            *DATE_COLS_DET,
-        )
+        .select(_select_cols_det)
         .sort(["ENTIDAD O SECRETARIA", sel_hito_col_r], descending=[False, True])
     )
 
@@ -567,10 +600,26 @@ if tab_resumen is not None:
                     _bpin_h  = html.escape(str(r['BPIN'] or '—'))
                     _nom_h   = html.escape(r['NOMBRE PROYECTO'] or '—')
                     _est_h   = html.escape(r['ESTADO PROYECTO'] or '(Sin estado)')
+
+                    # ── Estado con tooltip de COMENTARIOS CALIFICACIÓN ──
+                    _comentario = (r.get("COMENTARIOS CALIFICACIÓN") or "").strip()
+                    if _comentario:
+                        _comentario_h = html.escape(_comentario).replace("\n", "<br>")
+                        estado_html = (
+                            f'<div class="coment-wrap">'
+                            f'<span class="estado-tag">{_est_h}</span>'
+                            f'<div class="coment-tip-box">'
+                            f'<div class="coment-tip-title">Comentario calificación</div>'
+                            f'<div class="coment-tip-body">{_comentario_h}</div>'
+                            f'</div></div>'
+                        )
+                    else:
+                        estado_html = f'<span class="estado-tag">{_est_h}</span>'
+
                     det_rows_list.append(f"""<tr class="{row_cls}">
                         <td><span class="bpin-tag">{_bpin_h}</span></td>
                         <td style="font-size:0.81rem">{_nom_h}</td>
-                        <td><span class="estado-tag">{_est_h}</span></td>
+                        <td>{estado_html}</td>
                         <td>
                           <div class="dias-tip-wrap">
                             <span class="dias-val-link">{dias_str}</span>
@@ -889,11 +938,18 @@ if tab_evaluacion is not None:
   with tab_evaluacion:
     st.markdown("<div class='section-heading'>Evaluación del modelo ejecutor</div>", unsafe_allow_html=True)
     st.markdown(
-        f"<div style='font-size:0.78rem;color:{C['muted']};margin-bottom:1rem'>"
-        "Calificaciones promedio por entidad / secretaría (Departamento de Sucre).</div>",
+        f"<div style='font-size:0.78rem;color:{C['muted']};margin-bottom:0.4rem'>"
+        "Calificaciones promedio por entidad / secretaría (Departamento de Sucre).</div>"
+        f"<div style='font-size:0.72rem;color:{C['azul_medio']};background:#eff6ff;"
+        f"border-left:3px solid {C['azul_medio']};padding:0.45rem 0.7rem;border-radius:4px;"
+        "margin-bottom:1rem'>"
+        "<strong>Nota:</strong> esta pestaña usa siempre la <b>fecha de corte registrada en "
+        "el archivo</b>. El filtro de fecha de corte del panel lateral no aplica aquí.</div>",
         unsafe_allow_html=True,
     )
 
+    # Importante: usamos file_bytes directamente — sin fecha_corte_override —
+    # para que la evaluación sea estable y reproducible respecto al archivo.
     df_eval, cols_eval_ok, eval_errores, df_eval_raw = procesar_eval_sucre(file_bytes)
     col_entidad    = "ENTIDAD O SECRETARIA"
     label_entidad  = "Entidad / Secretaría"
@@ -1930,13 +1986,19 @@ if tab_d_evaluacion is not None:
     st.markdown("<div class='section-heading'>Evaluación del modelo ejecutor</div>",
                 unsafe_allow_html=True)
     st.markdown(
-        f"<div style='font-size:0.78rem;color:{C['muted']};margin-bottom:1rem'>"
-        "Calificaciones promedio por ejecutor (Entidades Descentralizadas).</div>",
+        f"<div style='font-size:0.78rem;color:{C['muted']};margin-bottom:0.4rem'>"
+        "Calificaciones promedio por ejecutor (Entidades Descentralizadas).</div>"
+        f"<div style='font-size:0.72rem;color:{C['azul_medio']};background:#eff6ff;"
+        f"border-left:3px solid {C['azul_medio']};padding:0.45rem 0.7rem;border-radius:4px;"
+        "margin-bottom:1rem'>"
+        "<strong>Nota:</strong> esta pestaña usa siempre la <b>fecha de corte registrada en "
+        "el archivo</b>. El filtro de fecha de corte del panel lateral no aplica aquí.</div>",
         unsafe_allow_html=True,
     )
 
-    # Re-procesar para obtener (df_eval, cols_ok, errores, df_raw) — mismo
-    # contrato que procesar_eval_sucre.
+    # Importante: pasamos file_bytes directamente — sin fecha_corte_override —
+    # para que la evaluación se mantenga estable frente al archivo y no cambie
+    # cuando el usuario alterne el filtro general.
     df_eval_d, cols_eval_ok_d, eval_errores_d, df_eval_raw_d = procesar_descentralizadas(file_bytes)
 
     if eval_errores_d:
@@ -2311,12 +2373,13 @@ if tab_m_proyectos is not None and df_municipios is not None:
 
     rows_m_html = []
     for r in df_proy_m.to_dicts():
-        eje  = html.escape(r.get("EJECUTOR") or "—")
-        bpin = html.escape(str(r.get("BPIN") or "—"))
-        nom  = html.escape(r.get("NOMBRE DEL PROYECTO") or "—")
-        est  = html.escape(r.get("ESTADO PROYECTO") or "")
-        af   = r.get("AVANCE FÍSICO")
-        an   = r.get("AVANCE FINANCIERO")
+        eje    = html.escape(r.get("EJECUTOR") or "—")
+        bpin   = html.escape(str(r.get("BPIN") or "—"))
+        nom    = html.escape(r.get("NOMBRE DEL PROYECTO") or "—")
+        sector = html.escape(r.get("SECTOR") or "—")
+        est    = html.escape(r.get("ESTADO PROYECTO") or "")
+        af     = r.get("AVANCE FÍSICO")
+        an     = r.get("AVANCE FINANCIERO")
         def _fmt_pct(v):
             if v is None: return "—"
             try:
@@ -2332,6 +2395,7 @@ if tab_m_proyectos is not None and df_municipios is not None:
             <td class="proy-ent" style="white-space:normal;font-size:0.74rem">{eje}</td>
             <td><span class="bpin-tag">{bpin}</span></td>
             <td class="proy-nombre">{nom}</td>
+            <td style="font-size:0.74rem;color:{C['muted']};white-space:normal">{sector}</td>
             <td><span class="estado-tag">{est or '—'}</span></td>
             <td style="text-align:center">{_fmt_pct(af)}</td>
             <td style="text-align:center">{_fmt_pct(an)}</td>
@@ -2341,14 +2405,15 @@ if tab_m_proyectos is not None and df_municipios is not None:
     <table class="proy-table">
     <thead><tr>
         <th style="width:130px">Ejecutor</th>
-        <th style="width:110px">BPIN</th>
+        <th style="width:100px">BPIN</th>
         <th>Nombre del proyecto</th>
-        <th style="width:155px">Estado proyecto</th>
-        <th style="width:90px">Avance<br>físico</th>
-        <th style="width:90px">Avance<br>financiero</th>
+        <th style="width:130px">Sector</th>
+        <th style="width:140px">Estado proyecto</th>
+        <th style="width:80px">Avance<br>físico</th>
+        <th style="width:80px">Avance<br>financiero</th>
     </tr></thead>
     <tbody>{''.join(rows_m_html) if rows_m_html else
-        f'<tr><td colspan="6" style="padding:1rem;text-align:center;color:{C["muted"]};font-style:italic">'
+        f'<tr><td colspan="7" style="padding:1rem;text-align:center;color:{C["muted"]};font-style:italic">'
         'Sin proyectos para los filtros activos.</td></tr>'}
     </tbody></table>
     """, unsafe_allow_html=True)
