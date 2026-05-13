@@ -41,6 +41,213 @@ _log = logging.getLogger(__name__)
 # Inyectar CSS global y JS de tooltips
 inject_css()
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GUÍA DE HITOS — metadata + helper para la pestaña explicativa
+# ─────────────────────────────────────────────────────────────────────────────
+# Cada hito se describe con la misma estructura: estados que aplican,
+# condiciones adicionales, la fórmula que se calcula y su unidad. El semáforo
+# (rangos + mensajes) se lee dinámicamente desde SEMAFOROS para que la guía
+# refleje siempre la fuente de verdad del cálculo.
+HITOS_INFO = [
+    {
+        "n": 1,
+        "titulo": "Sin contratar sin apertura",
+        "descripcion": "Días que un proyecto aprobado lleva sin abrir su primer proceso precontractual.",
+        "estados":   ["SIN CONTRATAR", "(o estado vacío)"],
+        "condiciones": [
+            "Tiene fecha de aprobación del proyecto",
+            "<strong>NO</strong> tiene fecha de apertura del primer proceso (si la tiene, pasa a Hito 2)",
+            "La fecha de aprobación es anterior o igual a la fecha de corte",
+        ],
+        "formula":     ("FECHA DE CORTE GESPROY", "FECHA APROBACIÓN PROYECTO", "días"),
+        "intervalos":  "hito_1_val",
+    },
+    {
+        "n": 2,
+        "titulo": "Sin contratar con apertura",
+        "descripcion": "Días desde que se abrió el primer proceso precontractual sin que se haya suscrito contrato.",
+        "estados":   ["SIN CONTRATAR", "(o estado vacío)"],
+        "condiciones": [
+            "Tiene fecha de apertura del primer proceso precontractual",
+        ],
+        "formula":     ("FECHA DE CORTE GESPROY", "FECHA DE APERTURA DEL PRIMER PROCESO", "días"),
+        "intervalos":  "hito_2_val",
+    },
+    {
+        "n": 3,
+        "titulo": "Contratado sin acta de inicio",
+        "descripcion": "Días desde la suscripción del contrato sin que se firme el acta de inicio.",
+        "estados":   ["CONTRATADO SIN ACTA DE INICIO"],
+        "condiciones": [
+            "Tiene fecha de suscripción del contrato",
+        ],
+        "formula":     ("FECHA DE CORTE GESPROY", "FECHA SUSCRIPCION", "días"),
+        "intervalos":  "hito_3_val",
+    },
+    {
+        "n": 4,
+        "titulo": "En ejecución rezagado",
+        "descripcion": "Meses que un proyecto en ejecución lleva con su horizonte vencido y sin avance.",
+        "estados":   ["CONTRATADO EN EJECUCIÓN"],
+        "condiciones": [
+            "CPI = 0  y  SPI = 0",
+            "El horizonte del proyecto ya está vencido (horizonte ≤ fecha de corte)",
+        ],
+        "formula":     ("FECHA DE CORTE GESPROY", "HORIZONTE DEL PROYECTO", "meses"),
+        "intervalos":  "hito_4_val",
+    },
+    {
+        "n": 5,
+        "titulo": "Terminados pendientes de cierre",
+        "descripcion": "Días que un proyecto terminado lleva sin pasar formalmente al estado 'Para cierre'.",
+        "estados":   ["TERMINADO"],
+        "condiciones": [
+            "Tiene fecha de finalización registrada",
+        ],
+        "formula":     ("FECHA DE CORTE GESPROY", "FECHA DE FINALIZACIÓN", "días"),
+        "intervalos":  "hito_5_val",
+    },
+]
+
+# Mapeo del color interno de SEMAFOROS al sufijo CSS (.guia-sem--*)
+_GUIA_COLOR_CLS = {"green": "verde", "yellow": "naranja", "orange": "rojo", "black": "negro"}
+
+
+def render_guia_hitos(incluir_h5: bool, fuente: str):
+    """
+    Renderiza la pestaña 'Guía de hitos' con cards por cada hito.
+      incluir_h5 : si la fuente actual permite calcular Hito 5
+      fuente     : nombre del modelo ("Departamento" o "Descentralizadas")
+    """
+    # Encabezado
+    st.markdown('<div class="section-heading">Guía de cálculo de hitos</div>',
+                unsafe_allow_html=True)
+
+    # Intro
+    h5_disclaimer = (
+        ""
+        if incluir_h5
+        else (" Para esta fuente <strong>Hito 5 no aplica</strong> porque "
+              "la tabla no incluye fecha de finalización.")
+    )
+    st.markdown(f"""
+    <div class="guia-intro">
+      <div class="guia-intro-title">¿Cómo se evalúan los proyectos?</div>
+      Cada proyecto se mide contra <strong>{5 if incluir_h5 else 4} hitos de gestión</strong>
+      según el estado en que se encuentra. Cada hito calcula el tiempo
+      transcurrido entre dos fechas clave y lo clasifica en un nivel de alerta
+      (verde, naranja, rojo o negro) según el rango en el que caiga.{h5_disclaimer}
+      <br><br>
+      La <strong>fecha de corte GESPROY</strong> es la referencia temporal: por defecto
+      viene del archivo cargado, pero puedes cambiarla a <em>la fecha de hoy</em> desde
+      el filtro <strong>Fecha de corte</strong> del panel lateral.
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Flujo: Estados → Hitos
+    flujo = [
+        ("Sin contratar",              "Hitos 1 y 2"),
+        ("Contratado sin acta",        "Hito 3"),
+        ("Contratado en ejecución",    "Hito 4"),
+        ("Terminado",                  "Hito 5" if incluir_h5 else "no aplica"),
+    ]
+    flow_parts = ['<div class="guia-flow">']
+    for i, (estado, hitos) in enumerate(flujo):
+        flow_parts.append(
+            f'<div class="guia-flow-step">'
+            f'<div class="guia-flow-state">{estado}</div>'
+            f'<div class="guia-flow-hitos">{hitos}</div>'
+            f'</div>'
+        )
+        if i < len(flujo) - 1:
+            flow_parts.append('<div class="guia-flow-arrow">›</div>')
+    flow_parts.append('</div>')
+    st.markdown("".join(flow_parts), unsafe_allow_html=True)
+
+    # Cards de cada hito
+    hitos_a_mostrar = HITOS_INFO if incluir_h5 else [h for h in HITOS_INFO if h["n"] != 5]
+    for hito in hitos_a_mostrar:
+        # Etiquetas de estado
+        estados_html = "".join(
+            f'<span class="guia-tag">{e}</span>' for e in hito["estados"]
+        )
+        # Condiciones como lista
+        if hito["condiciones"]:
+            cond_html = (
+                '<ul class="guia-bullets">'
+                + "".join(f"<li>{c}</li>" for c in hito["condiciones"])
+                + '</ul>'
+            )
+        else:
+            cond_html = '<span style="color:#9CA3AF;font-style:italic">Sin condiciones adicionales.</span>'
+
+        col_a, col_b, unidad = hito["formula"]
+        formula_html = (
+            '<div class="guia-formula">'
+            f'<span class="guia-formula-col">{col_a}</span>'
+            '<span class="guia-formula-op">−</span>'
+            f'<span class="guia-formula-col">{col_b}</span>'
+            '<span class="guia-formula-eq">=</span>'
+            f'<span class="guia-formula-result">{unidad}</span>'
+            '</div>'
+        )
+
+        # Semáforo desde SEMAFOROS — orden de inserción preserva el orden
+        # natural verde→negro porque los dicts conservan orden.
+        sem_dict = SEMAFOROS.get(hito["intervalos"], {})
+        sem_cells = []
+        for rango, (color, nivel, mensaje) in sem_dict.items():
+            cls = _GUIA_COLOR_CLS.get(color, "verde")
+            sem_cells.append(
+                f'<div class="guia-sem guia-sem--{cls}">'
+                f'  <div class="guia-sem-rango">{rango}</div>'
+                f'  <div class="guia-sem-nivel">{nivel}</div>'
+                f'  <div class="guia-sem-mensaje">{mensaje}</div>'
+                f'</div>'
+            )
+        sem_html = '<div class="guia-semaforo">' + "".join(sem_cells) + '</div>'
+
+        st.markdown(f"""
+        <div class="guia-hito">
+          <div class="guia-hito-header">
+            <div class="guia-hito-num">H{hito["n"]}</div>
+            <div>
+              <div class="guia-hito-titulo">{hito["titulo"]}</div>
+              <div class="guia-hito-subtitulo">{hito["descripcion"]}</div>
+            </div>
+          </div>
+          <div class="guia-hito-body">
+            <div class="guia-row">
+              <div class="guia-row-label">Estado del proyecto</div>
+              <div class="guia-row-value">{estados_html}</div>
+            </div>
+            <div class="guia-row">
+              <div class="guia-row-label">Condiciones</div>
+              <div class="guia-row-value">{cond_html}</div>
+            </div>
+            <div class="guia-row">
+              <div class="guia-row-label">Cálculo</div>
+              <div class="guia-row-value">{formula_html}</div>
+            </div>
+            <div class="guia-row">
+              <div class="guia-row-label">Semáforo</div>
+              <div class="guia-row-value">{sem_html}</div>
+            </div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Nota final
+    st.markdown("""
+    <div class="guia-nota">
+      <strong>Tip:</strong> al pasar el cursor sobre cualquier celda de alerta en las pestañas
+      de Resumen o Detalle, se muestra el mensaje específico del hito y nivel.
+      En el Detalle por hito, también se puede consultar el comentario de calificación
+      del proyecto haciendo hover sobre el estado.
+    </div>
+    """, unsafe_allow_html=True)
+
 with st.sidebar:
     # ── Selector de vista (controla qué se muestra en el área principal) ─────
     st.markdown("<div class='sidebar-section'>Vista</div>", unsafe_allow_html=True)
@@ -441,23 +648,27 @@ with st.sidebar:
 # Tabs declarados condicionalmente: cada vista crea sus propios objetos tab.
 # Las tabs de Departamento se conservan con los nombres originales para
 # minimizar cambios en el código existente.
-tab_resumen = tab_proyectos = tab_alertas = tab_evaluacion = None
-tab_d_resumen = tab_d_proyectos = tab_d_alertas = tab_d_evaluacion = None
+tab_guia = tab_resumen = tab_proyectos = tab_alertas = tab_evaluacion = None
+tab_d_guia = tab_d_resumen = tab_d_proyectos = tab_d_alertas = tab_d_evaluacion = None
 tab_m_proyectos = None
 
 if vista == "Departamento":
-    tab_resumen, tab_proyectos, tab_alertas, tab_evaluacion = st.tabs([
+    (tab_resumen, tab_proyectos, tab_alertas,
+     tab_evaluacion, tab_guia) = st.tabs([
         "Resumen por entidad",
         "Todos los proyectos",
         "Reporte semanal de alertas",
         "Evaluación del modelo",
+        "Guía de hitos",
     ])
 elif vista == "Descentralizadas":
-    tab_d_resumen, tab_d_proyectos, tab_d_alertas, tab_d_evaluacion = st.tabs([
+    (tab_d_resumen, tab_d_proyectos, tab_d_alertas,
+     tab_d_evaluacion, tab_d_guia) = st.tabs([
         "Resumen por entidad",
         "Proyectos",
         "Reporte semanal de alertas",
         "Evaluación del modelo",
+        "Guía de hitos",
     ])
 elif vista == "Municipios":
     tab_m_proyectos = st.tabs(["Proyectos"])[0]
@@ -2421,3 +2632,16 @@ if tab_m_proyectos is not None and df_municipios is not None:
 elif tab_m_proyectos is not None:
   with tab_m_proyectos:
     st.warning("No se encontró la tabla **OtrosEjecutoresMunicipios** en el archivo.")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# PESTAÑA DE GUÍA — explica los hitos, su cálculo y los rangos del semáforo
+# Solo presente en las vistas Departamento (5 hitos) y Descentralizadas (1-4).
+# ═════════════════════════════════════════════════════════════════════════════
+if tab_guia is not None:
+    with tab_guia:
+        render_guia_hitos(incluir_h5=True, fuente="Departamento")
+
+if tab_d_guia is not None:
+    with tab_d_guia:
+        render_guia_hitos(incluir_h5=False, fuente="Descentralizadas")

@@ -32,6 +32,74 @@ from openpyxl.utils import get_column_letter
 _log = logging.getLogger(__name__)
 
 
+def _leer_tabla_robusta(file_bytes, nombre):
+    """
+    Lee una tabla del Excel intentando varias estrategias en orden:
+      1. Tabla nombrada (Insertar → Tabla en Excel) con ese nombre.
+      2. Hoja del libro con ese nombre — encabezados en la primera fila.
+      3. Hoja con ese nombre — encabezados en la SEGUNDA fila (caso de
+         las matrices que tienen un título en la fila 1 y los headers en
+         la fila 2, como `MatrizSeguimientoEvaluacion`).
+      4. Hoja con ese nombre leída sin encabezados; promueve la fila 1
+         como headers y descarta las primeras dos filas (título + headers).
+
+    Devuelve un pl.DataFrame. Si todos los intentos fallan, propaga la
+    última excepción para que el llamador la maneje.
+    """
+    bio = io.BytesIO(file_bytes)
+    # Estrategia 1 — tabla nombrada
+    try:
+        return pl.read_excel(bio, table_name=nombre)
+    except Exception as exc_tabla:
+        last_exc = exc_tabla
+
+    # Estrategia 2 — sheet_name con header en la primera fila
+    try:
+        bio.seek(0)
+        return pl.read_excel(bio, sheet_name=nombre)
+    except Exception as exc_sheet:
+        last_exc = exc_sheet
+
+    # Estrategia 3 — sheet_name con header_row=1 (engine calamine vía fastexcel)
+    try:
+        bio.seek(0)
+        return pl.read_excel(bio, sheet_name=nombre, read_options={"header_row": 1})
+    except Exception as exc_hr:
+        last_exc = exc_hr
+
+    # Estrategia 4 — leer raw sin headers, promover fila 1 como header
+    try:
+        bio.seek(0)
+        raw = pl.read_excel(bio, sheet_name=nombre, has_header=False,
+                            infer_schema_length=0)
+        if raw.height < 2:
+            raise ValueError(f"Hoja '{nombre}' tiene menos de 2 filas")
+        # Si la fila 0 tiene un solo valor poblado (típicamente título o
+        # merge), usamos la fila 1 como headers; si no, usamos la fila 0.
+        row0 = list(raw.row(0))
+        row1 = list(raw.row(1))
+        row0_pob = sum(1 for v in row0 if v is not None and str(v).strip() not in ("", "None"))
+        # Heurística: si row1 tiene más celdas pobladas que row0, probablemente
+        # row0 es título y row1 es header
+        row1_pob = sum(1 for v in row1 if v is not None and str(v).strip() not in ("", "None"))
+        header_idx = 1 if row1_pob > row0_pob else 0
+        headers = []
+        seen = {}
+        for i, v in enumerate(raw.row(header_idx)):
+            name = str(v).strip() if v is not None and str(v).strip() not in ("", "None") else f"_col_{i}"
+            if name in seen:
+                seen[name] += 1
+                name = f"{name}_{seen[name]}"
+            else:
+                seen[name] = 0
+            headers.append(name)
+        df = raw.rename(dict(zip(raw.columns, headers))).slice(header_idx + 1)
+        return df
+    except Exception:
+        # Propagar la última excepción significativa
+        raise last_exc
+
+
 def clasificar_hito4_meses(col):
     """Hito 4 se clasifica en meses (días / 30), no en días directos."""
     meses = pl.col(col) / 30.0
@@ -108,7 +176,7 @@ def procesar(file_bytes, fecha_corte_override=None):
         fecha (típicamente "hoy" en zona horaria local). Si es None se usa la
         fecha de corte que viene en el archivo (comportamiento por defecto).
     """
-    df = pl.read_excel(io.BytesIO(file_bytes), table_name=TABLA_ESPERADA)
+    df = _leer_tabla_robusta(file_bytes, TABLA_ESPERADA)
 
     DATE_COLS = [
         "FECHA APROBACIÓN PROYECTO", "FECHA DE APERTURA DEL PRIMER PROCESO",
@@ -282,7 +350,7 @@ def procesar_descentralizadas(file_bytes):
     """Lee la tabla de descentralizadas y calcula promedios de calificación por EJECUTOR.
     Retorna (df_promedio, cols_ok, errores, df_raw)."""
     try:
-        df = pl.read_excel(io.BytesIO(file_bytes), table_name=TABLA_DESCENTRALIZADAS)
+        df = _leer_tabla_robusta(file_bytes, TABLA_DESCENTRALIZADAS)
         cols_disponibles = [c for c in COLS_EVAL if c in df.columns]
         if not cols_disponibles or "EJECUTOR" not in df.columns:
             return None, [], [], None
@@ -306,7 +374,7 @@ def procesar_eval_sucre(file_bytes):
     """Calcula promedios de calificación por ENTIDAD O SECRETARIA (tabla Sucre).
     Retorna (df_promedio, cols_ok, errores, df_raw) — df_raw tiene filas individuales."""
     try:
-        df = pl.read_excel(io.BytesIO(file_bytes), table_name=TABLA_ESPERADA)
+        df = _leer_tabla_robusta(file_bytes, TABLA_ESPERADA)
         cols_disponibles = [c for c in COLS_EVAL if c in df.columns]
         if not cols_disponibles or "ENTIDAD O SECRETARIA" not in df.columns:
             return None, [], [], None
@@ -356,7 +424,7 @@ def validar_archivo(file_bytes):
 
     # 1. Verificar que la tabla existe
     try:
-        df_raw = pl.read_excel(io.BytesIO(file_bytes), table_name=TABLA_ESPERADA)
+        df_raw = _leer_tabla_robusta(file_bytes, TABLA_ESPERADA)
     except Exception as e:
         msg = str(e)
         if "table" in msg.lower() or "not found" in msg.lower() or "name" in msg.lower():
@@ -626,7 +694,7 @@ def procesar_descentralizadas_hitos(file_bytes, fecha_corte_override=None):
     Retorna None si la tabla no existe o falla.
     """
     try:
-        df = pl.read_excel(io.BytesIO(file_bytes), table_name=TABLA_DESCENTRALIZADAS)
+        df = _leer_tabla_robusta(file_bytes, TABLA_DESCENTRALIZADAS)
     except Exception:
         _log.exception("procesar_descentralizadas_hitos: tabla no encontrada o ilegible")
         return None
@@ -756,7 +824,7 @@ def procesar_municipios(file_bytes):
     Retorna None si la tabla no existe.
     """
     try:
-        df = pl.read_excel(io.BytesIO(file_bytes), table_name=TABLA_MUNICIPIOS)
+        df = _leer_tabla_robusta(file_bytes, TABLA_MUNICIPIOS)
     except Exception:
         _log.exception("procesar_municipios: tabla no encontrada o ilegible")
         return None

@@ -1192,6 +1192,260 @@ def inject_css():
     .reporte-table tbody tr:last-child td {{ border-bottom: none; }}
     .reporte-table tbody tr:hover td {{ background: #f0f6ff !important; transition: background 0.12s; }}
 
+    /* ─────────────────────────────────────────────────────────────────
+       GUÍA DE HITOS — pestaña explicativa con cards y semáforos
+       ───────────────────────────────────────────────────────────────── */
+    .guia-intro {{
+        background: #f8fafd;
+        border: 1px solid {C['border']};
+        border-left: 4px solid {C['azul_oscuro']};
+        border-radius: 6px;
+        padding: 1.1rem 1.4rem;
+        margin: 0 0 1.2rem 0;
+        color: {C['text']};
+        font-size: 0.85rem;
+        line-height: 1.65;
+    }}
+    .guia-intro strong {{ color: {C['azul_oscuro']}; font-weight: 700; }}
+    .guia-intro .guia-intro-title {{
+        font-family: 'Montserrat', sans-serif;
+        font-size: 0.7rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        color: {C['azul_oscuro']};
+        margin-bottom: 0.5rem;
+    }}
+
+    /* Flujo de estados → hitos */
+    .guia-flow {{
+        display: flex;
+        align-items: stretch;
+        gap: 0.4rem;
+        margin: 0 0 1.5rem 0;
+        padding: 0.85rem 0.9rem;
+        background: #ffffff;
+        border: 1px solid {C['border']};
+        border-radius: 8px;
+        flex-wrap: wrap;
+    }}
+    .guia-flow-step {{
+        flex: 1;
+        min-width: 110px;
+        text-align: center;
+        padding: 0.5rem 0.6rem;
+        border-radius: 6px;
+        background: #f7fafd;
+        border: 1px solid {C['border']};
+    }}
+    .guia-flow-state {{
+        font-family: 'Montserrat', sans-serif;
+        font-size: 0.6rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.7px;
+        color: {C['azul_oscuro']};
+        margin-bottom: 0.3rem;
+        line-height: 1.25;
+    }}
+    .guia-flow-hitos {{
+        font-size: 0.7rem;
+        color: {C['azul_medio']};
+        font-weight: 600;
+    }}
+    .guia-flow-arrow {{
+        flex: 0 0 auto;
+        color: #cbd5e1;
+        font-size: 1.3rem;
+        align-self: center;
+        font-weight: 300;
+    }}
+
+    /* Card de hito */
+    .guia-hito {{
+        background: #ffffff;
+        border: 1px solid {C['border']};
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        overflow: hidden;
+    }}
+    .guia-hito-header {{
+        display: flex;
+        align-items: center;
+        gap: 0.95rem;
+        padding: 0.85rem 1.2rem;
+        background: {C['azul_oscuro']};
+        color: white;
+    }}
+    .guia-hito-num {{
+        background: rgba(255,255,255,0.13);
+        color: white;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: 'Montserrat', sans-serif;
+        font-weight: 800;
+        font-size: 1rem;
+        flex-shrink: 0;
+        border: 1.5px solid rgba(255,255,255,0.25);
+    }}
+    .guia-hito-titulo {{
+        font-family: 'Montserrat', sans-serif;
+        font-size: 0.96rem;
+        font-weight: 700;
+        line-height: 1.25;
+        color: white;
+    }}
+    .guia-hito-subtitulo {{
+        font-size: 0.72rem;
+        color: rgba(255,255,255,0.7);
+        margin-top: 0.15rem;
+        line-height: 1.4;
+    }}
+    .guia-hito-body {{
+        padding: 1.15rem 1.3rem 1.25rem 1.3rem;
+    }}
+    .guia-row {{
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 0.95rem;
+    }}
+    .guia-row:last-child {{ margin-bottom: 0; }}
+    .guia-row-label {{
+        flex: 0 0 130px;
+        font-family: 'Montserrat', sans-serif;
+        font-size: 0.66rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.7px;
+        color: {C['muted']};
+        padding-top: 0.2rem;
+    }}
+    .guia-row-value {{
+        flex: 1;
+        font-size: 0.83rem;
+        color: {C['text']};
+        line-height: 1.6;
+    }}
+    .guia-tag {{
+        display: inline-block;
+        background: #eff6ff;
+        color: {C['azul_medio']};
+        border: 1px solid {C['azul_medio']}22;
+        border-radius: 4px;
+        padding: 2px 9px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        margin-right: 5px;
+        margin-bottom: 4px;
+        font-family: 'Montserrat', sans-serif;
+        letter-spacing: 0.3px;
+    }}
+    .guia-bullets {{ list-style: none; padding: 0; margin: 0; }}
+    .guia-bullets li {{
+        font-size: 0.82rem; line-height: 1.55;
+        padding-left: 1rem; position: relative;
+    }}
+    .guia-bullets li::before {{
+        content: '•'; position: absolute; left: 0; color: {C['cian']};
+        font-weight: 700;
+    }}
+
+    /* Fórmula visual */
+    .guia-formula {{
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        background: #f7fafd;
+        border: 1px solid {C['border']};
+        border-radius: 6px;
+        padding: 0.55rem 0.85rem;
+    }}
+    .guia-formula-col {{
+        font-family: 'DM Mono', monospace;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: {C['azul_oscuro']};
+        background: #ffffff;
+        border: 1px solid {C['border']};
+        border-radius: 4px;
+        padding: 3px 8px;
+    }}
+    .guia-formula-op {{
+        color: {C['muted']};
+        font-weight: 800;
+        font-size: 1rem;
+        font-family: 'DM Mono', monospace;
+    }}
+    .guia-formula-eq {{
+        color: {C['muted']};
+        font-weight: 800;
+        font-size: 1rem;
+        font-family: 'DM Mono', monospace;
+    }}
+    .guia-formula-result {{
+        background: {C['azul_oscuro']};
+        color: white;
+        font-size: 0.72rem;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-family: 'Montserrat', sans-serif;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }}
+
+    /* Semáforo de 4 columnas */
+    .guia-semaforo {{
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.55rem;
+    }}
+    .guia-sem {{
+        border-radius: 6px;
+        padding: 0.75rem 0.85rem;
+        line-height: 1.45;
+    }}
+    .guia-sem-rango {{
+        font-family: 'DM Mono', monospace;
+        font-weight: 800;
+        font-size: 1.05rem;
+        line-height: 1;
+        margin-bottom: 0.3rem;
+    }}
+    .guia-sem-nivel {{
+        font-family: 'Montserrat', sans-serif;
+        font-size: 0.6rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.9px;
+        margin-bottom: 0.35rem;
+        opacity: 0.85;
+    }}
+    .guia-sem-mensaje {{ font-size: 0.7rem; }}
+    .guia-sem--verde   {{ background: #d1fae5; color: #065f46; }}
+    .guia-sem--naranja {{ background: #fef3c7; color: #92400e; }}
+    .guia-sem--rojo    {{ background: #ffedd5; color: #9a3412; }}
+    .guia-sem--negro   {{ background: #1e293b; color: #f1f5f9; }}
+
+    /* Nota al pie de la guía */
+    .guia-nota {{
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        border-left: 4px solid #d97706;
+        border-radius: 6px;
+        padding: 0.75rem 1rem;
+        margin: 1rem 0;
+        font-size: 0.78rem;
+        color: #78350f;
+        line-height: 1.55;
+    }}
+    .guia-nota strong {{ color: #92400e; }}
+
     /* ── Tooltip de COMENTARIOS CALIFICACIÓN (Detalle por hito) ── */
     .coment-wrap {{ position: relative; display: inline-block; cursor: help; }}
     .coment-wrap .estado-tag {{ border-bottom: 1px dotted {C['azul_medio']}; }}
@@ -1491,7 +1745,13 @@ INTERVALOS = {
 
 SEMAFOROS = {
     "hito_1_val": {
-        "0-100":   ("green",  "Verde",   "Proyecto dentro de los tiempos para su primera apertura del proceso de contratación."),
+        "0-100":   ("green",  "Verde",   "Proyecto dentro de los tiempos para su primera apertura del proceso precontractual."),
+        "101-150": ("yellow", "Naranja", "Proyecto en alerta: más de 100 días sin apertura del primer proceso precontractual."),
+        "151-180": ("orange", "Rojo",    "Proyecto en alerta roja: más de 150 días sin apertura del primer proceso precontractual."),
+        ">180":    ("black",  "Negro",   "Proyecto en alerta negra: más de 180 días sin apertura del primer proceso precontractual."),
+    },
+    "hito_2_val": {
+        "0-100":   ("green",  "Verde",   "Proyecto dentro de los tiempos para la firma del primer contrato."),
         "101-150": ("yellow", "Naranja", "Proyecto en alerta: más de 100 días sin firma del primer contrato."),
         "151-180": ("orange", "Rojo",    "Proyecto en alerta roja: más de 150 días sin firma del primer contrato."),
         ">180":    ("black",  "Negro",   "Proyecto en alerta negra: más de 180 días sin firma del primer contrato."),
