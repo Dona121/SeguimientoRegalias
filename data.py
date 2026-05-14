@@ -705,17 +705,19 @@ def procesar_descentralizadas_hitos(file_bytes, fecha_corte_override=None):
 
     cast_exprs = _cast_dates_exprs(df, DATE_COLS_DESCENT)
 
-    # Columnas opcionales
+    # Columnas opcionales — incluimos COMENTARIOS CALIFICACIÓN para mostrar
+    # como tooltip al pasar el cursor sobre el estado del proyecto.
     extra_cols = [c for c in (AVANCE_FISICO_OTROS, AVANCE_FINANCIERO,
                               "NOMBRE DEL PROYECTO", "ESTADO CONTRATO",
-                              "CPI", "SPI") if c in df.columns]
+                              "CPI", "SPI", "COMENTARIOS CALIFICACIÓN") if c in df.columns]
 
     base_cols = ["EJECUTOR", "BPIN"]
     if "NOMBRE DEL PROYECTO" in df.columns:
         base_cols.append("NOMBRE DEL PROYECTO")
     base_cols.append("ESTADO PROYECTO")
     select_cols = base_cols + [c for c in (AVANCE_FISICO_OTROS, AVANCE_FINANCIERO,
-                                           "ESTADO CONTRATO", "CPI", "SPI") if c in df.columns]
+                                           "ESTADO CONTRATO", "CPI", "SPI",
+                                           "COMENTARIOS CALIFICACIÓN") if c in df.columns]
     select_cols += [c for c in DATE_COLS_DESCENT if c in df.columns]
 
     df = (
@@ -833,11 +835,23 @@ def procesar_municipios(file_bytes):
     if any(c not in df.columns for c in requeridas):
         return None
 
+    # La columna de comentarios en Municipios viene como "COMENTARIOS "
+    # (con espacio al final) en el archivo origen. Normalizamos el nombre a
+    # "COMENTARIOS CALIFICACIÓN" para unificar con Departamento/Descentralizadas.
+    rename_map = {}
+    if "COMENTARIOS " in df.columns and "COMENTARIOS CALIFICACIÓN" not in df.columns:
+        rename_map["COMENTARIOS "] = "COMENTARIOS CALIFICACIÓN"
+    elif "COMENTARIOS" in df.columns and "COMENTARIOS CALIFICACIÓN" not in df.columns:
+        rename_map["COMENTARIOS"] = "COMENTARIOS CALIFICACIÓN"
+    if rename_map:
+        df = df.rename(rename_map)
+
     deseadas = [
         "EJECUTOR", "BPIN",
         "NOMBRE DEL PROYECTO", "SECTOR",
         "ESTADO PROYECTO", "ESTADO CONTRATO",
         AVANCE_FISICO_OTROS, AVANCE_FINANCIERO,
+        "COMENTARIOS CALIFICACIÓN",
     ]
     presentes = [c for c in deseadas if c in df.columns]
 

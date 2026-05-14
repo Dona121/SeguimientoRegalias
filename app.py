@@ -250,13 +250,17 @@ def render_guia_hitos(incluir_h5: bool, fuente: str):
 
 with st.sidebar:
     # ── Selector de vista (controla qué se muestra en el área principal) ─────
+    # La "Guía de hitos" es la primera y se vuelve la vista por defecto al abrir
+    # la app, para que un usuario nuevo entienda cómo se calcula cada hito antes
+    # de explorar los datos.
     st.markdown("<div class='sidebar-section'>Vista</div>", unsafe_allow_html=True)
     vista = st.radio(
         "Vista",
-        ["Departamento", "Descentralizadas", "Municipios"],
+        ["Guía de hitos", "Departamento", "Descentralizadas", "Municipios"],
         label_visibility="collapsed",
         key="vista_principal",
         help=(
+            "Guía: introducción al cálculo de los hitos (vista por defecto).\n"
             "Departamento: Matriz de Seguimiento (hitos completos).\n"
             "Descentralizadas: Hitos 1-4 + evaluación.\n"
             "Municipios: solo listado de proyectos."
@@ -496,6 +500,14 @@ HITOS = {
 # ─────────────────────────────────────────────────────────────────────────────
 df_f = df
 
+# ═════════════════════════════════════════════════════════════════════════════
+# VISTA GUÍA DE HITOS — pantalla introductoria (no muestra KPIs ni tabs).
+# Se renderiza completa aquí y `st.stop()` evita ejecutar el resto del flujo.
+# ═════════════════════════════════════════════════════════════════════════════
+if vista == "Guía de hitos":
+    render_guia_hitos(incluir_h5=True, fuente="Guía global")
+    st.stop()
+
 # ─────────────────────────────────────────────────────────────────────────────
 # KPIs — adaptados a la vista activa
 # ─────────────────────────────────────────────────────────────────────────────
@@ -648,27 +660,23 @@ with st.sidebar:
 # Tabs declarados condicionalmente: cada vista crea sus propios objetos tab.
 # Las tabs de Departamento se conservan con los nombres originales para
 # minimizar cambios en el código existente.
-tab_guia = tab_resumen = tab_proyectos = tab_alertas = tab_evaluacion = None
-tab_d_guia = tab_d_resumen = tab_d_proyectos = tab_d_alertas = tab_d_evaluacion = None
+tab_resumen = tab_proyectos = tab_alertas = tab_evaluacion = None
+tab_d_resumen = tab_d_proyectos = tab_d_alertas = tab_d_evaluacion = None
 tab_m_proyectos = None
 
 if vista == "Departamento":
-    (tab_resumen, tab_proyectos, tab_alertas,
-     tab_evaluacion, tab_guia) = st.tabs([
+    tab_resumen, tab_proyectos, tab_alertas, tab_evaluacion = st.tabs([
         "Resumen por entidad",
         "Todos los proyectos",
         "Reporte semanal de alertas",
         "Evaluación del modelo",
-        "Guía de hitos",
     ])
 elif vista == "Descentralizadas":
-    (tab_d_resumen, tab_d_proyectos, tab_d_alertas,
-     tab_d_evaluacion, tab_d_guia) = st.tabs([
+    tab_d_resumen, tab_d_proyectos, tab_d_alertas, tab_d_evaluacion = st.tabs([
         "Resumen por entidad",
         "Proyectos",
         "Reporte semanal de alertas",
         "Evaluación del modelo",
-        "Guía de hitos",
     ])
 elif vista == "Municipios":
     tab_m_proyectos = st.tabs(["Proyectos"])[0]
@@ -2020,14 +2028,15 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
         ]
         nombre_col = "NOMBRE DEL PROYECTO" if "NOMBRE DEL PROYECTO" in df_descent_hitos.columns else "EJECUTOR"
 
+        _select_cols_det_d = ["EJECUTOR", "BPIN", nombre_col, "ESTADO PROYECTO",
+                              sel_hito_col_d, sel_clasi_col_d, *DATE_COLS_DET_D]
+        if "COMENTARIOS CALIFICACIÓN" in df_descent_hitos.columns:
+            _select_cols_det_d.append("COMENTARIOS CALIFICACIÓN")
+
         df_det_d = (
             df_descent_hitos
             .filter(~pl.col(sel_hito_col_d).is_null())
-            .select(
-                "EJECUTOR", "BPIN", nombre_col, "ESTADO PROYECTO",
-                sel_hito_col_d, sel_clasi_col_d,
-                *DATE_COLS_DET_D,
-            )
+            .select(_select_cols_det_d)
             .sort(["EJECUTOR", sel_hito_col_d], descending=[False, True])
         )
 
@@ -2081,10 +2090,26 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
                         _bpin_h  = html.escape(str(r['BPIN'] or '—'))
                         _nom_h   = html.escape(r.get(nombre_col) or '—')
                         _est_h   = html.escape(r.get('ESTADO PROYECTO') or '(Sin estado)')
+
+                        # Estado con tooltip de COMENTARIOS CALIFICACIÓN
+                        _coment_d = (r.get("COMENTARIOS CALIFICACIÓN") or "").strip()
+                        if _coment_d:
+                            _coment_h = html.escape(_coment_d).replace("\n", "<br>")
+                            estado_d_html = (
+                                f'<div class="coment-wrap">'
+                                f'<span class="estado-tag">{_est_h}</span>'
+                                f'<div class="coment-tip-box">'
+                                f'<div class="coment-tip-title">Comentario calificación</div>'
+                                f'<div class="coment-tip-body">{_coment_h}</div>'
+                                f'</div></div>'
+                            )
+                        else:
+                            estado_d_html = f'<span class="estado-tag">{_est_h}</span>'
+
                         det_rows_d.append(f"""<tr class="{row_cls}">
                             <td><span class="bpin-tag">{_bpin_h}</span></td>
                             <td style="font-size:0.81rem">{_nom_h}</td>
-                            <td><span class="estado-tag">{_est_h}</span></td>
+                            <td>{estado_d_html}</td>
                             <td>
                               <div class="dias-tip-wrap">
                                 <span class="dias-val-link">{dias_str}</span>
@@ -2599,15 +2624,30 @@ if tab_m_proyectos is not None and df_municipios is not None:
                 return f"{fv:.1f}%"
             except Exception:
                 return "—"
-        # Estado simple sin tooltip (la tabla de Municipios no trae datos
-        # suficientes para alimentar el comentario contextual).
+
+        # Estado con tooltip de COMENTARIOS CALIFICACIÓN (si el proyecto
+        # tiene comentario registrado).
+        _coment_m = (r.get("COMENTARIOS CALIFICACIÓN") or "").strip()
+        if _coment_m:
+            _coment_h = html.escape(_coment_m).replace("\n", "<br>")
+            estado_m_html = (
+                f'<div class="coment-wrap">'
+                f'<span class="estado-tag">{est or "—"}</span>'
+                f'<div class="coment-tip-box">'
+                f'<div class="coment-tip-title">Comentario calificación</div>'
+                f'<div class="coment-tip-body">{_coment_h}</div>'
+                f'</div></div>'
+            )
+        else:
+            estado_m_html = f'<span class="estado-tag">{est or "—"}</span>'
+
         rows_m_html.append(f"""
         <tr class="proy-data-row">
             <td class="proy-ent" style="white-space:normal;font-size:0.74rem">{eje}</td>
             <td><span class="bpin-tag">{bpin}</span></td>
             <td class="proy-nombre">{nom}</td>
             <td style="font-size:0.74rem;color:{C['muted']};white-space:normal">{sector}</td>
-            <td><span class="estado-tag">{est or '—'}</span></td>
+            <td>{estado_m_html}</td>
             <td style="text-align:center">{_fmt_pct(af)}</td>
             <td style="text-align:center">{_fmt_pct(an)}</td>
         </tr>""")
@@ -2632,16 +2672,3 @@ if tab_m_proyectos is not None and df_municipios is not None:
 elif tab_m_proyectos is not None:
   with tab_m_proyectos:
     st.warning("No se encontró la tabla **OtrosEjecutoresMunicipios** en el archivo.")
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# PESTAÑA DE GUÍA — explica los hitos, su cálculo y los rangos del semáforo
-# Solo presente en las vistas Departamento (5 hitos) y Descentralizadas (1-4).
-# ═════════════════════════════════════════════════════════════════════════════
-if tab_guia is not None:
-    with tab_guia:
-        render_guia_hitos(incluir_h5=True, fuente="Departamento")
-
-if tab_d_guia is not None:
-    with tab_d_guia:
-        render_guia_hitos(incluir_h5=False, fuente="Descentralizadas")
