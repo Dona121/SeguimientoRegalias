@@ -32,6 +32,18 @@ from openpyxl.utils import get_column_letter
 _log = logging.getLogger(__name__)
 
 
+def _strip_columnas(df):
+    """Recorta espacios en los nombres de columna (deja un dict de rename solo
+    para las que realmente cambian, así polars no toca columnas ya limpias)."""
+    try:
+        cambios = {c: c.strip() for c in df.columns if c != c.strip()}
+        if cambios:
+            df = df.rename(cambios)
+    except Exception:
+        pass
+    return df
+
+
 def _leer_tabla_robusta(file_bytes, nombre):
     """
     Lee una tabla del Excel intentando varias estrategias en orden:
@@ -43,27 +55,34 @@ def _leer_tabla_robusta(file_bytes, nombre):
       4. Hoja con ese nombre leída sin encabezados; promueve la fila 1
          como headers y descarta las primeras dos filas (título + headers).
 
+    Cualquiera que sea la estrategia que funcione, recorta espacios en los
+    nombres de columna antes de devolver el DataFrame (un trailing space en
+    el encabezado del Excel — caso `"COMENTARIOS "` — es invisible y rompe
+    búsquedas por nombre exacto).
+
     Devuelve un pl.DataFrame. Si todos los intentos fallan, propaga la
     última excepción para que el llamador la maneje.
     """
     bio = io.BytesIO(file_bytes)
     # Estrategia 1 — tabla nombrada
     try:
-        return pl.read_excel(bio, table_name=nombre)
+        return _strip_columnas(pl.read_excel(bio, table_name=nombre))
     except Exception as exc_tabla:
         last_exc = exc_tabla
 
     # Estrategia 2 — sheet_name con header en la primera fila
     try:
         bio.seek(0)
-        return pl.read_excel(bio, sheet_name=nombre)
+        return _strip_columnas(pl.read_excel(bio, sheet_name=nombre))
     except Exception as exc_sheet:
         last_exc = exc_sheet
 
     # Estrategia 3 — sheet_name con header_row=1 (engine calamine vía fastexcel)
     try:
         bio.seek(0)
-        return pl.read_excel(bio, sheet_name=nombre, read_options={"header_row": 1})
+        return _strip_columnas(
+            pl.read_excel(bio, sheet_name=nombre, read_options={"header_row": 1})
+        )
     except Exception as exc_hr:
         last_exc = exc_hr
 
@@ -835,16 +854,13 @@ def procesar_municipios(file_bytes):
     if any(c not in df.columns for c in requeridas):
         return None
 
-    # La columna de comentarios en Municipios viene como "COMENTARIOS "
-    # (con espacio al final) en el archivo origen. Normalizamos el nombre a
-    # "COMENTARIOS CALIFICACIÓN" para unificar con Departamento/Descentralizadas.
-    rename_map = {}
-    if "COMENTARIOS " in df.columns and "COMENTARIOS CALIFICACIÓN" not in df.columns:
-        rename_map["COMENTARIOS "] = "COMENTARIOS CALIFICACIÓN"
-    elif "COMENTARIOS" in df.columns and "COMENTARIOS CALIFICACIÓN" not in df.columns:
-        rename_map["COMENTARIOS"] = "COMENTARIOS CALIFICACIÓN"
-    if rename_map:
-        df = df.rename(rename_map)
+    # En Municipios la columna del comentario se llama simplemente
+    # "COMENTARIOS" (a veces venía con un espacio al final en el archivo
+    # original; el lector ya recorta espacios). La renombramos a
+    # "COMENTARIOS CALIFICACIÓN" para unificar con Departamento/Descentralizadas
+    # y reusar el mismo selector del tooltip en la UI.
+    if "COMENTARIOS" in df.columns and "COMENTARIOS CALIFICACIÓN" not in df.columns:
+        df = df.rename({"COMENTARIOS": "COMENTARIOS CALIFICACIÓN"})
 
     deseadas = [
         "EJECUTOR", "BPIN",
