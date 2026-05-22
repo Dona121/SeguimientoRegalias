@@ -232,6 +232,16 @@ def procesar(file_bytes, fecha_corte_override=None):
     df = (
         df
         .with_columns(
+            # Hito 0 — vista global "sin contratar". Mide los días transcurridos
+            # entre la FECHA DE APROBACIÓN y la FECHA DE CORTE GESPROY para TODOS
+            # los proyectos en estado SIN CONTRATAR (con o sin apertura del
+            # primer proceso precontractual). NO tiene clasificación de
+            # semáforo — solo se muestra el promedio de días.
+            pl.when(
+                ((pl.col("ESTADO PROYECTO") == "SIN CONTRATAR") | pl.col("ESTADO PROYECTO").is_null() | (pl.col("ESTADO PROYECTO") == "")) &
+                (~pl.col("FECHA APROBACIÓN PROYECTO").is_null()) & (~pl.col("FECHA DE CORTE GESPROY").is_null()) &
+                (pl.col("FECHA APROBACIÓN PROYECTO") <= pl.col("FECHA DE CORTE GESPROY"))
+            ).then((pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA APROBACIÓN PROYECTO")).dt.total_days()).otherwise(None).alias("hito_0_val"),
             # Hito 1 — solo proyectos SIN CONTRATAR sin apertura de proceso
             # precontractual. Si el proyecto ya tiene apertura, pasa a Hito 2 y
             # NO se cuenta también aquí (regla de no duplicidad H1/H2).
@@ -757,6 +767,19 @@ def procesar_descentralizadas_hitos(file_bytes, fecha_corte_override=None):
     # proceso, va al Hito 2 únicamente.
     hito_exprs = []
     if all(c in df.columns for c in ("FECHA APROBACIÓN PROYECTO", "FECHA DE CORTE GESPROY")):
+        # Hito 0 — vista global "sin contratar". Cubre TODOS los proyectos sin
+        # contratar (con o sin apertura del primer proceso). NO tiene semáforo,
+        # se reporta solo el promedio de días entre aprobación y corte.
+        hito_exprs.append(
+            pl.when(
+                ((pl.col("ESTADO PROYECTO") == "SIN CONTRATAR") | pl.col("ESTADO PROYECTO").is_null() | (pl.col("ESTADO PROYECTO") == "")) &
+                (~pl.col("FECHA APROBACIÓN PROYECTO").is_null()) &
+                (~pl.col("FECHA DE CORTE GESPROY").is_null()) &
+                (pl.col("FECHA APROBACIÓN PROYECTO") <= pl.col("FECHA DE CORTE GESPROY"))
+            ).then(
+                (pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA APROBACIÓN PROYECTO")).dt.total_days()
+            ).otherwise(None).alias("hito_0_val")
+        )
         cond_sin_apertura = (
             pl.col("FECHA DE APERTURA DEL PRIMER PROCESO").is_null()
             if "FECHA DE APERTURA DEL PRIMER PROCESO" in df.columns

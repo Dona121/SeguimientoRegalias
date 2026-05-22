@@ -266,6 +266,12 @@ def _fmt_date(val):
 
 
 HITO_CALC_META = {
+    "hito_0_val": (
+        "Fecha aprobación",    "FECHA APROBACIÓN PROYECTO",
+        "Fecha corte GESPROY", "FECHA DE CORTE GESPROY",
+        "Días totales desde la aprobación del proyecto hasta el corte para "
+        "todos los proyectos sin contratar (con o sin apertura del proceso).",
+    ),
     "hito_1_val": (
         "Fecha aprobación",    "FECHA APROBACIÓN PROYECTO",
         "Fecha corte GESPROY", "FECHA DE CORTE GESPROY",

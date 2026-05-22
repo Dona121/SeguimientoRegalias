@@ -51,6 +51,21 @@ inject_css()
 # refleje siempre la fuente de verdad del cálculo.
 HITOS_INFO = [
     {
+        "n": 0,
+        "titulo": "Sin contratar (general)",
+        "descripcion": "Vista global de los proyectos en estado SIN CONTRATAR. Muestra los días promedio "
+                       "transcurridos desde la aprobación, sin importar si ya tienen abierto el primer "
+                       "proceso precontractual. No tiene semáforo.",
+        "estados":   ["SIN CONTRATAR", "(o estado vacío)"],
+        "condiciones": [
+            "Tiene fecha de aprobación del proyecto",
+            "La fecha de aprobación es anterior o igual a la fecha de corte",
+            "Aplica con o sin apertura del primer proceso precontractual",
+        ],
+        "formula":     ("FECHA DE CORTE GESPROY", "FECHA APROBACIÓN PROYECTO", "días"),
+        "intervalos":  None,  # ← sin semáforo
+    },
+    {
         "n": 1,
         "titulo": "Sin contratar sin apertura",
         "descripcion": "Días que un proyecto aprobado lleva sin abrir su primer proceso precontractual.",
@@ -134,10 +149,11 @@ def render_guia_hitos(incluir_h5: bool, fuente: str):
     st.markdown(f"""
     <div class="guia-intro">
       <div class="guia-intro-title">¿Cómo se evalúan los proyectos?</div>
-      Cada proyecto se mide contra <strong>{5 if incluir_h5 else 4} hitos de gestión</strong>
-      según el estado en que se encuentra. Cada hito calcula el tiempo
-      transcurrido entre dos fechas clave y lo clasifica en un nivel de alerta
-      (verde, naranja, rojo o negro) según el rango en el que caiga.{h5_disclaimer}
+      Cada proyecto se mide contra <strong>{6 if incluir_h5 else 5} hitos de gestión</strong>
+      según el estado en que se encuentra. El <strong>Hito 0</strong> es informativo y
+      solo reporta los días promedio para todos los proyectos sin contratar; los demás
+      hitos calculan el tiempo transcurrido entre dos fechas clave y lo clasifican en
+      un nivel de alerta (verde, naranja, rojo o negro) según el rango en el que caiga.{h5_disclaimer}
       <br><br>
       La <strong>fecha de corte GESPROY</strong> es la referencia temporal: por defecto
       viene del archivo cargado, pero puedes cambiarla a <em>la fecha de hoy</em> desde
@@ -147,7 +163,7 @@ def render_guia_hitos(incluir_h5: bool, fuente: str):
 
     # Flujo: Estados → Hitos
     flujo = [
-        ("Sin contratar",              "Hitos 1 y 2"),
+        ("Sin contratar",              "Hitos 0, 1 y 2"),
         ("Contratado sin acta",        "Hito 3"),
         ("Contratado en ejecución",    "Hito 4"),
         ("Terminado",                  "Hito 5" if incluir_h5 else "no aplica"),
@@ -194,19 +210,39 @@ def render_guia_hitos(incluir_h5: bool, fuente: str):
         )
 
         # Semáforo desde SEMAFOROS — orden de inserción preserva el orden
-        # natural verde→negro porque los dicts conservan orden.
-        sem_dict = SEMAFOROS.get(hito["intervalos"], {})
-        sem_cells = []
-        for rango, (color, nivel, mensaje) in sem_dict.items():
-            cls = _GUIA_COLOR_CLS.get(color, "verde")
-            sem_cells.append(
-                f'<div class="guia-sem guia-sem--{cls}">'
-                f'  <div class="guia-sem-rango">{rango}</div>'
-                f'  <div class="guia-sem-nivel">{nivel}</div>'
-                f'  <div class="guia-sem-mensaje">{mensaje}</div>'
-                f'</div>'
+        # natural verde→negro porque los dicts conservan orden. Si el hito no
+        # tiene intervalos (caso de Hito 0, que solo muestra días), omitimos
+        # la fila de semáforo.
+        sem_block_html = ""
+        if hito.get("intervalos"):
+            sem_dict = SEMAFOROS.get(hito["intervalos"], {})
+            sem_cells = []
+            for rango, (color, nivel, mensaje) in sem_dict.items():
+                cls = _GUIA_COLOR_CLS.get(color, "verde")
+                sem_cells.append(
+                    f'<div class="guia-sem guia-sem--{cls}">'
+                    f'  <div class="guia-sem-rango">{rango}</div>'
+                    f'  <div class="guia-sem-nivel">{nivel}</div>'
+                    f'  <div class="guia-sem-mensaje">{mensaje}</div>'
+                    f'</div>'
+                )
+            sem_html = '<div class="guia-semaforo">' + "".join(sem_cells) + '</div>'
+            sem_block_html = (
+                '<div class="guia-row">'
+                '  <div class="guia-row-label">Semáforo</div>'
+                f'  <div class="guia-row-value">{sem_html}</div>'
+                '</div>'
             )
-        sem_html = '<div class="guia-semaforo">' + "".join(sem_cells) + '</div>'
+        else:
+            sem_block_html = (
+                '<div class="guia-row">'
+                '  <div class="guia-row-label">Semáforo</div>'
+                '  <div class="guia-row-value" style="font-size:0.8rem;color:#6b7280;font-style:italic">'
+                '    Este hito es informativo. Solo se reportan los días transcurridos '
+                '    (sin clasificación de alerta).'
+                '  </div>'
+                '</div>'
+            )
 
         st.markdown(f"""
         <div class="guia-hito">
@@ -230,10 +266,7 @@ def render_guia_hitos(incluir_h5: bool, fuente: str):
               <div class="guia-row-label">Cálculo</div>
               <div class="guia-row-value">{formula_html}</div>
             </div>
-            <div class="guia-row">
-              <div class="guia-row-label">Semáforo</div>
-              <div class="guia-row-value">{sem_html}</div>
-            </div>
+            {sem_block_html}
           </div>
         </div>
         """, unsafe_allow_html=True)
@@ -486,6 +519,7 @@ df_contratos, _cttos_diag = (
 # FILTROS EN SIDEBAR
 # ─────────────────────────────────────────────────────────────────────────────
 HITOS = {
+    "H0 · Sin contratar (general)":       ("hito_0_val", None),
     "H1 · Sin contratar sin apertura":    ("hito_1_val", "clasi_1"),
     "H2 · Sin contratar con apertura":    ("hito_2_val", "clasi_2"),
     "H3 · Contratado sin acta de inicio": ("hito_3_val", "clasi_3"),
@@ -608,6 +642,7 @@ st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
 agrupacion = (
     df.group_by("ENTIDAD O SECRETARIA")
     .agg(
+        pl.col("hito_0_val").mean().round(1).alias("Hito 0 (días)"),
         pl.col("hito_1_val").mean().round(1).alias("Hito 1 (días)"),
         pl.col("hito_2_val").mean().round(1).alias("Hito 2 (días)"),
         pl.col("hito_3_val").mean().round(1).alias("Hito 3 (días)"),
@@ -697,12 +732,19 @@ if tab_resumen is not None:
             display = f"{dias_val:.1f} d"
         return f"<td><span class='dias-val'>{display}</span>{badge_html(clasi, hito_k)}</td>"
 
+    def hito_cell_sin_semaforo(dias_val):
+        """Celda solo con días (sin badge), usada por Hito 0 que no tiene semáforo."""
+        if dias_val is None or (isinstance(dias_val, float) and dias_val != dias_val):
+            return "<td class='null-cell'>—</td>"
+        return f"<td><span class='dias-val'>{dias_val:.1f} d</span></td>"
+
     def _build_row(row):
         e    = html.escape(row["ENTIDAD O SECRETARIA"] or "")
         susp = int(row["Suspendidos"]) if row["Suspendidos"] else 0
         pc   = int(row["Para cierre"]) if row["Para cierre"] else 0
         return f"""<tr>
             <td class="entidad-name">{e}</td>
+            {hito_cell_sin_semaforo(row['Hito 0 (días)'])}
             {hito_cell(row['Hito 1 (días)'], 'clasi_1')}
             {hito_cell(row['Hito 2 (días)'], 'clasi_2')}
             {hito_cell(row['Hito 3 (días)'], 'clasi_3')}
@@ -719,6 +761,8 @@ if tab_resumen is not None:
     <table class="summary-table">
     <thead><tr>
         <th>Entidad / Secretaría</th>
+        {th("Sin contratar<br>(general)", "Hito 0 · Sin contratar (general)",
+            "Promedio de días entre la <b>Fecha de aprobación</b> y la <b>Fecha de corte GESPROY</b> para <b>todos los proyectos sin contratar</b> (con o sin apertura del primer proceso).<br><br>Este hito es informativo: no tiene clasificación de semáforo.")}
         {th("Sin contratar<br>sin apertura", "Hito 1 · Sin contratar sin apertura",
             "Promedio de días entre la <b>Fecha de aprobación</b> y la <b>Fecha de corte GESPROY</b>.<br><br>Condición: Estado = SIN CONTRATAR y sin fecha de apertura.")}
         {th("Sin contratar<br>con apertura", "Hito 2 · Sin contratar con apertura",
@@ -754,7 +798,8 @@ if tab_resumen is not None:
         label_visibility="collapsed",
     )
     sel_hito_col_r, sel_clasi_col_r = HITOS[sel_hito_resumen]
-    hito_key_detalle = HITO_KEY_MAP.get(sel_clasi_col_r, None)
+    hito_key_detalle = HITO_KEY_MAP.get(sel_clasi_col_r, None) if sel_clasi_col_r else None
+    es_hito_sin_semaforo = sel_clasi_col_r is None
 
     DATE_COLS_DET = [
         "FECHA APROBACIÓN PROYECTO", "FECHA DE APERTURA DEL PRIMER PROCESO",
@@ -764,8 +809,10 @@ if tab_resumen is not None:
     # Incluimos COMENTARIOS CALIFICACIÓN si está presente — se usa como
     # tooltip al pasar el cursor sobre el estado del proyecto.
     _select_cols_det = ["ENTIDAD O SECRETARIA", "BPIN", "NOMBRE PROYECTO",
-                         "ESTADO PROYECTO", sel_hito_col_r, sel_clasi_col_r,
+                         "ESTADO PROYECTO", sel_hito_col_r,
                          *DATE_COLS_DET]
+    if sel_clasi_col_r:
+        _select_cols_det.insert(5, sel_clasi_col_r)
     if "COMENTARIOS CALIFICACIÓN" in df.columns:
         _select_cols_det.append("COMENTARIOS CALIFICACIÓN")
 
@@ -791,8 +838,11 @@ if tab_resumen is not None:
                     dias_v   = r[sel_hito_col_r]
                     dias_str = f"{dias_v:.1f} d" if dias_v is not None else "—"
 
-                    # ── Reclasificación local — usa INTERVALOS directamente ──
-                    if dias_v is not None:
+                    # ── Reclasificación local — usa INTERVALOS directamente.
+                    # Para Hito 0 (sin semáforo) no calculamos clasi_v.
+                    if es_hito_sin_semaforo:
+                        clasi_v = None
+                    elif dias_v is not None:
                         if sel_hito_col_r == "hito_4_val":
                             meses = dias_v / 30.0
                             if   meses <= 1: clasi_v = "0-1"
@@ -835,6 +885,11 @@ if tab_resumen is not None:
                     else:
                         estado_html = f'<span class="estado-tag">{_est_h}</span>'
 
+                    if es_hito_sin_semaforo:
+                        clasi_cell = "<td style='color:#9ca3af;text-align:center'>—</td>"
+                    else:
+                        clasi_cell = f"<td>{badge_html(clasi_v, hito_key_detalle)}</td>"
+
                     det_rows_list.append(f"""<tr class="{row_cls}">
                         <td><span class="bpin-tag">{_bpin_h}</span></td>
                         <td style="font-size:0.81rem">{_nom_h}</td>
@@ -845,7 +900,7 @@ if tab_resumen is not None:
                             {tooltip}
                           </div>
                         </td>
-                        <td>{badge_html(clasi_v, hito_key_detalle)}</td>
+                        {clasi_cell}
                     </tr>""")
 
                 st.markdown(f"""
@@ -1924,7 +1979,7 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
     )
 
     # Agregar promedios por EJECUTOR
-    _hito_cols_present = [c for c in ("hito_1_val","hito_2_val","hito_3_val","hito_4_val")
+    _hito_cols_present = [c for c in ("hito_0_val","hito_1_val","hito_2_val","hito_3_val","hito_4_val")
                           if c in df_descent_hitos.columns]
     _agg_exprs = []
     for hk in _hito_cols_present:
@@ -1953,12 +2008,21 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
             display = f"{dias_val:.1f} d"
         return f"<td><span class='dias-val'>{display}</span>{badge_html(clasi, hito_k)}</td>"
 
+    def _hito_cell_d_sin_semaforo(dias_val):
+        """Celda solo con días (sin badge) — usada por Hito 0."""
+        if dias_val is None or (isinstance(dias_val, float) and dias_val != dias_val):
+            return "<td class='null-cell'>—</td>"
+        return f"<td><span class='dias-val'>{dias_val:.1f} d</span></td>"
+
+    _has_h0_descent = "hito_0_val" in df_descent_hitos.columns
     rows_html_d = ""
     for row in agrup_descent.to_dicts():
         ent  = html.escape(row.get("EJECUTOR") or "")
         susp = int(row.get("Suspendidos") or 0)
         pc   = int(row.get("Para cierre") or 0)
         cells = ""
+        if _has_h0_descent:
+            cells += _hito_cell_d_sin_semaforo(row.get("Hito 0 (días)"))
         for n, ck in [("1","clasi_1"),("2","clasi_2"),("3","clasi_3"),("4","clasi_4")]:
             cells += _hito_cell_d(row.get(f"Hito {n} (días)"), ck)
         rows_html_d += (
@@ -1968,10 +2032,19 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
             f"<td class='col-total'>{int(row['Total'])}</td></tr>"
         )
 
+    _th_h0_descent = (
+        th("Sin contratar<br>(general)", "Hito 0 · Sin contratar (general)",
+           "Promedio de días entre la <b>Fecha de aprobación</b> y la <b>Fecha de corte GESPROY</b> para "
+           "<b>todos los proyectos sin contratar</b> (con o sin apertura).<br><br>Este hito es informativo: "
+           "no tiene clasificación de semáforo.")
+        if _has_h0_descent else ""
+    )
+
     st.markdown(f"""
     <table class="summary-table">
     <thead><tr>
         <th>Ejecutor</th>
+        {_th_h0_descent}
         {th("Sin contratar<br>sin apertura", "Hito 1",
             "Promedio de días entre la <b>Fecha de aprobación</b> y la <b>Fecha de corte GESPROY</b>.")}
         {th("Sin contratar<br>con apertura", "Hito 2",
@@ -1999,6 +2072,7 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
     )
 
     HITOS_D_OPTS = {
+        "H0 · Sin contratar (general)":       ("hito_0_val", None),
         "H1 · Sin contratar sin apertura":    ("hito_1_val", "clasi_1"),
         "H2 · Sin contratar con apertura":    ("hito_2_val", "clasi_2"),
         "H3 · Contratado sin acta de inicio": ("hito_3_val", "clasi_3"),
@@ -2017,7 +2091,8 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
             label_visibility="collapsed",
         )
         sel_hito_col_d, sel_clasi_col_d = HITOS_D_OPTS[sel_hito_d]
-        hito_key_detalle_d = HITO_KEY_MAP.get(sel_clasi_col_d, None)
+        hito_key_detalle_d = HITO_KEY_MAP.get(sel_clasi_col_d, None) if sel_clasi_col_d else None
+        es_hito_sin_semaforo_d = sel_clasi_col_d is None
 
         DATE_COLS_DET_D = [
             c for c in (
@@ -2029,7 +2104,9 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
         nombre_col = "NOMBRE DEL PROYECTO" if "NOMBRE DEL PROYECTO" in df_descent_hitos.columns else "EJECUTOR"
 
         _select_cols_det_d = ["EJECUTOR", "BPIN", nombre_col, "ESTADO PROYECTO",
-                              sel_hito_col_d, sel_clasi_col_d, *DATE_COLS_DET_D]
+                              sel_hito_col_d, *DATE_COLS_DET_D]
+        if sel_clasi_col_d:
+            _select_cols_det_d.insert(5, sel_clasi_col_d)
         if "COMENTARIOS CALIFICACIÓN" in df_descent_hitos.columns:
             _select_cols_det_d.append("COMENTARIOS CALIFICACIÓN")
 
@@ -2064,7 +2141,9 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
                         else:
                             dias_str = "—"
 
-                        if dias_v is not None:
+                        if es_hito_sin_semaforo_d:
+                            clasi_v = None
+                        elif dias_v is not None:
                             if sel_hito_col_d == "hito_4_val":
                                 meses = dias_v / 30.0
                                 if   meses <= 1: clasi_v = "0-1"
@@ -2106,6 +2185,11 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
                         else:
                             estado_d_html = f'<span class="estado-tag">{_est_h}</span>'
 
+                        if es_hito_sin_semaforo_d:
+                            clasi_cell_d = "<td style='color:#9ca3af;text-align:center'>—</td>"
+                        else:
+                            clasi_cell_d = f"<td>{badge_html(clasi_v, hito_key_detalle_d)}</td>"
+
                         det_rows_d.append(f"""<tr class="{row_cls}">
                             <td><span class="bpin-tag">{_bpin_h}</span></td>
                             <td style="font-size:0.81rem">{_nom_h}</td>
@@ -2116,7 +2200,7 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
                                 {tooltip}
                               </div>
                             </td>
-                            <td>{badge_html(clasi_v, hito_key_detalle_d)}</td>
+                            {clasi_cell_d}
                         </tr>""")
 
                     st.markdown(f"""
