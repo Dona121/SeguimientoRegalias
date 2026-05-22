@@ -271,8 +271,14 @@ def procesar(file_bytes, fecha_corte_override=None):
                 (pl.col("CPI") == 0) & (pl.col("SPI") == 0) &
                 (pl.col("HORIZONTE DEL PROYECTO") <= pl.col("FECHA DE CORTE GESPROY"))
             ).then((pl.col("FECHA DE CORTE GESPROY") - pl.col("HORIZONTE DEL PROYECTO")).dt.total_days()).otherwise(None).alias("hito_4_val"),
-            # Hito 5
-            pl.when(~pl.col("FECHA DE FINALIZACIÓN").is_null()).then(
+            # Hito 5 — solo proyectos con estado TERMINADO. Antes contaba todos
+            # los que tuvieran FECHA DE FINALIZACIÓN, pero algunos proyectos en
+            # otros estados (p. ej. PARA CIERRE) también la tienen registrada y
+            # se colaban en la clasificación.
+            pl.when(
+                (pl.col("ESTADO PROYECTO") == "TERMINADO") &
+                (~pl.col("FECHA DE FINALIZACIÓN").is_null())
+            ).then(
                 (pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA DE FINALIZACIÓN")).dt.total_days()
             ).otherwise(None).alias("hito_5_val"),
             # Suspendidos — basado en ESTADO CONTRATO

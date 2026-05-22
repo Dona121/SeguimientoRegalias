@@ -118,6 +118,7 @@ HITOS_INFO = [
         "descripcion": "Días que un proyecto terminado lleva sin pasar formalmente al estado 'Para cierre'.",
         "estados":   ["TERMINADO"],
         "condiciones": [
+            "Estado del proyecto = <strong>TERMINADO</strong>",
             "Tiene fecha de finalización registrada",
         ],
         "formula":     ("FECHA DE CORTE GESPROY", "FECHA DE FINALIZACIÓN", "días"),
@@ -772,7 +773,7 @@ if tab_resumen is not None:
         {th("En ejecución<br>rezagado", "Hito 4 · En ejecución rezagado",
             "Meses entre el <b>Horizonte del proyecto</b> y la <b>Fecha de corte GESPROY</b>.<br><br>Condición: Estado = CONTRATADO EN EJECUCIÓN, CPI = 0, SPI = 0 y horizonte vencido.")}
         {th("Proyectos<br>terminados", "Hito 5 · Proyectos terminados",
-            "Promedio de días entre la <b>Fecha de finalización</b> y la <b>Fecha de corte GESPROY</b>.<br><br>Condición: Fecha de finalización registrada.")}
+            "Promedio de días entre la <b>Fecha de finalización</b> y la <b>Fecha de corte GESPROY</b>.<br><br>Condición: Estado = TERMINADO y Fecha de finalización registrada.")}
         {th("Suspendidos", "Proyectos suspendidos", "Conteo de proyectos cuyo <b>Estado contrato</b> = SUSPENDIDO.")}
         {th("Para cierre", "Proyectos para cierre", "Conteo de proyectos con Estado = PARA CIERRE.")}
         <th class="col-total">Total</th>
