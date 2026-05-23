@@ -290,14 +290,15 @@ with st.sidebar:
     st.markdown("<div class='sidebar-section'>Vista</div>", unsafe_allow_html=True)
     vista = st.radio(
         "Vista",
-        ["Guía de hitos", "Departamento", "Descentralizadas", "Municipios"],
+        ["Guía de hitos", "Departamento", "Descentralizadas", "Municipios", "Mapa"],
         label_visibility="collapsed",
         key="vista_principal",
         help=(
             "Guía: introducción al cálculo de los hitos (vista por defecto).\n"
             "Departamento: Matriz de Seguimiento (hitos completos).\n"
             "Descentralizadas: Hitos 1-4 + evaluación.\n"
-            "Municipios: solo listado de proyectos."
+            "Municipios: solo listado de proyectos.\n"
+            "Mapa: visor geográfico de los proyectos por municipio."
         ),
     )
 
@@ -366,9 +367,11 @@ with st.sidebar:
         )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# HEADER
+# HEADER — se oculta para la vista Mapa (que es full-screen y tiene su propia
+# barra superior dentro del componente).
 # ─────────────────────────────────────────────────────────────────────────────
-st.markdown("""
+if vista != "Mapa":
+    st.markdown("""
 <div class="page-header">
   <div>
     <h1>Seguimiento y Evaluación · Regalías</h1>
@@ -541,6 +544,15 @@ df_f = df
 # ═════════════════════════════════════════════════════════════════════════════
 if vista == "Guía de hitos":
     render_guia_hitos(incluir_h5=True, fuente="Guía global")
+    st.stop()
+
+# ═════════════════════════════════════════════════════════════════════════════
+# VISTA MAPA — visor geográfico de proyectos por municipio (tema oscuro).
+# Toda la lógica vive en mapa.py para mantener este orquestador limpio.
+# ═════════════════════════════════════════════════════════════════════════════
+if vista == "Mapa":
+    from mapa import render_mapa
+    render_mapa(df_f, df_descent_hitos, df_municipios)
     st.stop()
 
 # ─────────────────────────────────────────────────────────────────────────────

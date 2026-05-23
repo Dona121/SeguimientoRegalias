@@ -44,6 +44,38 @@ def _strip_columnas(df):
     return df
 
 
+def _normalizar_col_municipios(df):
+    """
+    Si el DataFrame trae una columna del tipo «municipios» con nombre distinto
+    al canónico, la renombra a MUNICIPIOS para que el resto del código la
+    encuentre. Acepta variantes comunes (Municipio, MUNICIPIOS BENEFICIADOS,
+    MUNICIPIO BENEFICIARIO, etc.). Si ya hay una columna exactamente llamada
+    MUNICIPIOS, no toca nada.
+    """
+    try:
+        cols = list(df.columns)
+        if "MUNICIPIOS" in cols:
+            return df
+        candidatos_exactos = [
+            "MUNICIPIO",
+            "MUNICIPIOS BENEFICIADOS",
+            "MUNICIPIO BENEFICIADO",
+            "MUNICIPIOS BENEFICIARIOS",
+            "MUNICIPIO BENEFICIARIO",
+        ]
+        cols_upper = {c.upper(): c for c in cols}
+        for cand in candidatos_exactos:
+            if cand in cols_upper:
+                return df.rename({cols_upper[cand]: "MUNICIPIOS"})
+        # Búsqueda flexible: cualquier columna que contenga "MUNICIPI"
+        for c in cols:
+            if "MUNICIPI" in str(c).upper():
+                return df.rename({c: "MUNICIPIOS"})
+    except Exception:
+        pass
+    return df
+
+
 def _leer_tabla_robusta(file_bytes, nombre):
     """
     Lee una tabla del Excel intentando varias estrategias en orden:
@@ -66,23 +98,23 @@ def _leer_tabla_robusta(file_bytes, nombre):
     bio = io.BytesIO(file_bytes)
     # Estrategia 1 — tabla nombrada
     try:
-        return _strip_columnas(pl.read_excel(bio, table_name=nombre))
+        return _normalizar_col_municipios(_strip_columnas(pl.read_excel(bio, table_name=nombre)))
     except Exception as exc_tabla:
         last_exc = exc_tabla
 
     # Estrategia 2 — sheet_name con header en la primera fila
     try:
         bio.seek(0)
-        return _strip_columnas(pl.read_excel(bio, sheet_name=nombre))
+        return _normalizar_col_municipios(_strip_columnas(pl.read_excel(bio, sheet_name=nombre)))
     except Exception as exc_sheet:
         last_exc = exc_sheet
 
     # Estrategia 3 — sheet_name con header_row=1 (engine calamine vía fastexcel)
     try:
         bio.seek(0)
-        return _strip_columnas(
+        return _normalizar_col_municipios(_strip_columnas(
             pl.read_excel(bio, sheet_name=nombre, read_options={"header_row": 1})
-        )
+        ))
     except Exception as exc_hr:
         last_exc = exc_hr
 
@@ -113,7 +145,7 @@ def _leer_tabla_robusta(file_bytes, nombre):
                 seen[name] = 0
             headers.append(name)
         df = raw.rename(dict(zip(raw.columns, headers))).slice(header_idx + 1)
-        return df
+        return _normalizar_col_municipios(df)
     except Exception:
         # Propagar la última excepción significativa
         raise last_exc
@@ -208,7 +240,8 @@ def procesar(file_bytes, fecha_corte_override=None):
     # Columnas opcionales — solo las incluimos si están presentes
     extra_cols = [c for c in (AVANCE_FISICO_DEPTO, AVANCE_FINANCIERO,
                               "RESPONSABLE CARGUE EN GESPROY",
-                              "COMENTARIOS CALIFICACIÓN", "SECTOR") if c in df.columns]
+                              "COMENTARIOS CALIFICACIÓN", "SECTOR",
+                              "MUNICIPIOS") if c in df.columns]
 
     df = (
         df.select(
@@ -744,7 +777,8 @@ def procesar_descentralizadas_hitos(file_bytes, fecha_corte_override=None):
     # como tooltip al pasar el cursor sobre el estado del proyecto.
     extra_cols = [c for c in (AVANCE_FISICO_OTROS, AVANCE_FINANCIERO,
                               "NOMBRE DEL PROYECTO", "ESTADO CONTRATO",
-                              "CPI", "SPI", "COMENTARIOS CALIFICACIÓN") if c in df.columns]
+                              "CPI", "SPI", "COMENTARIOS CALIFICACIÓN",
+                              "MUNICIPIOS") if c in df.columns]
 
     base_cols = ["EJECUTOR", "BPIN"]
     if "NOMBRE DEL PROYECTO" in df.columns:
@@ -752,7 +786,8 @@ def procesar_descentralizadas_hitos(file_bytes, fecha_corte_override=None):
     base_cols.append("ESTADO PROYECTO")
     select_cols = base_cols + [c for c in (AVANCE_FISICO_OTROS, AVANCE_FINANCIERO,
                                            "ESTADO CONTRATO", "CPI", "SPI",
-                                           "COMENTARIOS CALIFICACIÓN") if c in df.columns]
+                                           "COMENTARIOS CALIFICACIÓN",
+                                           "MUNICIPIOS") if c in df.columns]
     select_cols += [c for c in DATE_COLS_DESCENT if c in df.columns]
 
     df = (
@@ -896,7 +931,7 @@ def procesar_municipios(file_bytes):
         "NOMBRE DEL PROYECTO", "SECTOR",
         "ESTADO PROYECTO", "ESTADO CONTRATO",
         AVANCE_FISICO_OTROS, AVANCE_FINANCIERO,
-        "COMENTARIOS CALIFICACIÓN",
+        "COMENTARIOS CALIFICACIÓN", "MUNICIPIOS",
     ]
     presentes = [c for c in deseadas if c in df.columns]
 
