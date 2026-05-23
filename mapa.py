@@ -35,6 +35,7 @@ from constants import C
 # ─────────────────────────────────────────────────────────────────────────────
 # Las claves se almacenan ya normalizadas (sin tildes, mayúsculas, trim).
 MUNICIPIOS_SUCRE = {
+    # Nombres oficiales DANE (coinciden 1:1 con MPIO_CNMBR del GeoJSON).
     # Subregión Sabanas
     "SINCELEJO":              (9.3047, -75.3978),
     "COROZAL":                (9.3211, -75.2939),
@@ -43,7 +44,7 @@ MUNICIPIOS_SUCRE = {
     "SAMPUES":                (9.1814, -75.3814),
     "SAN JUAN DE BETULIA":    (9.2667, -75.2417),
     "BUENAVISTA":             (9.3197, -74.9706),
-    "SINCE":                  (9.2433, -75.1450),
+    "SAN LUIS DE SINCE":      (9.2433, -75.1450),   # ex "Sincé"
     "SAN PEDRO":              (9.3956, -75.0567),
     "GALERAS":                (9.1639, -75.0497),
     "EL ROBLE":               (9.1014, -75.1003),
@@ -52,12 +53,11 @@ MUNICIPIOS_SUCRE = {
     "CHALAN":                 (9.5450, -75.3147),
     "COLOSO":                 (9.4961, -75.3531),
     # Subregión Golfo de Morrosquillo
-    "TOLU":                   (9.5236, -75.5828),
-    "TOLU VIEJO":             (9.4500, -75.4400),
+    "SANTIAGO DE TOLU":       (9.5236, -75.5828),   # ex "Tolú"
+    "SAN JOSE DE TOLUVIEJO":  (9.4500, -75.4400),   # ex "Toluviejo"
     "COVENAS":                (9.4011, -75.6800),
     "SAN ONOFRE":             (9.7361, -75.5283),
-    "SAN ANTONIO DE PALMITO": (9.3372, -75.5358),
-    "PALMITO":                (9.3372, -75.5358),  # mismo que San Antonio de Palmito
+    "PALMITO":                (9.3372, -75.5358),   # ex "San Antonio de Palmito"
     # Subregión San Jorge
     "SAN MARCOS":             (8.6597, -75.1330),
     "SAN BENITO ABAD":        (8.9311, -75.0339),
@@ -106,9 +106,23 @@ def _strip_acentos(s: str) -> str:
     return "".join(c for c in s if not unicodedata.combining(c))
 
 
+# Aliases coloquiales → nombre DANE oficial. Permite que el Excel siga
+# funcionando aunque algún proyecto traiga el nombre corto/histórico.
+# El match se hace después de _strip_acentos + upper + trim.
+_ALIAS_MUNICIPIO = {
+    "SINCE":                  "SAN LUIS DE SINCE",
+    "SAN LUIS SINCE":         "SAN LUIS DE SINCE",
+    "TOLU":                   "SANTIAGO DE TOLU",
+    "TOLU VIEJO":             "SAN JOSE DE TOLUVIEJO",
+    "TOLUVIEJO":              "SAN JOSE DE TOLUVIEJO",
+    "SAN ANTONIO DE PALMITO": "PALMITO",
+}
+
+
 def _norm_municipio(s) -> str:
     """Normaliza un nombre de municipio: trim + mayúsculas + sin tildes + sin
-    puntos. Devuelve string vacío si la entrada es None/vacía."""
+    puntos. Aplica además aliases coloquiales → DANE oficial. Devuelve
+    string vacío si la entrada es None/vacía."""
     if s is None:
         return ""
     txt = str(s).strip()
@@ -117,17 +131,19 @@ def _norm_municipio(s) -> str:
     txt = _strip_acentos(txt).upper()
     # eliminar puntos y caracteres redundantes
     txt = re.sub(r"\s+", " ", txt).strip(" .")
-    return txt
+    # mapear nombre coloquial → DANE si aplica
+    return _ALIAS_MUNICIPIO.get(txt, txt)
 
 
-# Lista normalizada de TODOS los municipios para replicar "TODO EL DEPTO"
-# (sólo nombres únicos — Palmito/San Antonio de Palmito son el mismo).
+# Lista normalizada de TODOS los municipios (nombres DANE oficiales) para
+# replicar "TODO EL DEPARTAMENTO DE SUCRE".
 _TODOS_MUNICIPIOS_NORM = list(dict.fromkeys([
     "SINCELEJO", "COROZAL", "MORROA", "LOS PALMITOS", "SAMPUES",
-    "SAN JUAN DE BETULIA", "BUENAVISTA", "SINCE", "SAN PEDRO", "GALERAS",
-    "EL ROBLE", "OVEJAS", "CHALAN", "COLOSO", "TOLU", "TOLU VIEJO",
-    "COVENAS", "SAN ONOFRE", "SAN ANTONIO DE PALMITO", "SAN MARCOS",
-    "SAN BENITO ABAD", "CAIMITO", "LA UNION", "SUCRE", "MAJAGUAL", "GUARANDA",
+    "SAN JUAN DE BETULIA", "BUENAVISTA", "SAN LUIS DE SINCE", "SAN PEDRO",
+    "GALERAS", "EL ROBLE", "OVEJAS", "CHALAN", "COLOSO",
+    "SANTIAGO DE TOLU", "SAN JOSE DE TOLUVIEJO", "COVENAS", "SAN ONOFRE",
+    "PALMITO", "SAN MARCOS", "SAN BENITO ABAD", "CAIMITO", "LA UNION",
+    "SUCRE", "MAJAGUAL", "GUARANDA",
 ]))
 
 
@@ -335,6 +351,24 @@ def _agrupar_por_municipio(proyectos_con_munic):
                 }
             grupos[m]["proyectos"].append(p)
     return grupos, no_geo
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GEOJSON — contorno de los municipios de Sucre (DANE, simplificado a ~178 KB)
+# ─────────────────────────────────────────────────────────────────────────────
+@st.cache_data(show_spinner=False)
+def _cargar_geojson_sucre() -> dict:
+    """Lee el GeoJSON con los polígonos de los 26 municipios de Sucre.
+    Devuelve {} si el archivo no existe (la app sigue funcionando sin contornos)."""
+    import os
+    ruta = os.path.join(os.path.dirname(__file__), "Sucre.geojson")
+    if not os.path.exists(ruta):
+        return {}
+    try:
+        with open(ruta, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -565,6 +599,10 @@ def render_mapa(df_depto, df_descent, df_municipios):
     # Ordenar marcadores por nombre para el listado lateral.
     marcadores.sort(key=lambda x: x["nombre"])
 
+    # Conteo de proyectos por municipio normalizado (para colorear polígonos
+    # del GeoJSON). Cada proyecto cuenta una sola vez por municipio.
+    proy_por_muni = {m["id"]: m["n"] for m in marcadores}
+
     payload = {
         "centro":      list(CENTRO_DEPTO),
         "zoom":        ZOOM_INICIAL,
@@ -579,12 +617,15 @@ def render_mapa(df_depto, df_descent, df_municipios):
         "estados_count":  estados_count,
         "sectores_count": sectores_count,
         "no_geo_count": len(no_geo),
+        "proy_por_muni": proy_por_muni,
     }
 
     # 4) HTML + Leaflet embebido
     payload_json = json.dumps(payload, ensure_ascii=False)
-    # Escapamos las llaves para que .format/f-string no las interprete.
-    componente_html = _construir_componente_html(payload_json)
+    geojson_sucre = _cargar_geojson_sucre()
+    geojson_json  = json.dumps(geojson_sucre, ensure_ascii=False,
+                               separators=(",", ":"))
+    componente_html = _construir_componente_html(payload_json, geojson_json)
 
     # Altura fija grande para que la CSS de 100vh dentro del iframe llene
     # bien la pantalla en cualquier monitor. El CSS externo limita el
@@ -592,9 +633,9 @@ def render_mapa(df_depto, df_descent, df_municipios):
     components.html(componente_html, height=1200, scrolling=False)
 
 
-def _construir_componente_html(payload_json: str) -> str:
+def _construir_componente_html(payload_json: str, geojson_json: str) -> str:
     """
-    HTML+CSS+JS auto-contenido. Recibe el payload ya serializado a JSON.
+    HTML+CSS+JS auto-contenido. Recibe payload + geojson ya serializados a JSON.
 
     Layout:
       ┌──────────┬────────────────────────────────────────┐
@@ -606,7 +647,9 @@ def _construir_componente_html(payload_json: str) -> str:
     """
     # Cuidado: usar .replace en lugar de f-string aquí, porque el JS está
     # lleno de llaves y backticks que confundirían a Python.
-    return (_TEMPLATE_HTML).replace("__PAYLOAD__", payload_json)
+    return (_TEMPLATE_HTML
+            .replace("__PAYLOAD__", payload_json)
+            .replace("__GEOJSON__", geojson_json))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -775,6 +818,26 @@ _TEMPLATE_HTML = r"""
   /* ── MAPA ─────────────────────────────────────────────────────────── */
   .main { flex:1; position:relative; }
   #map { width:100%; height:100%; background:#0b1220; }
+
+  /* — Capa GeoJSON de municipios — */
+  .leaflet-tooltip.geo-tip {
+    background: rgba(15, 23, 42, 0.92);
+    color: #e2e8f0;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 11.5px;
+    font-weight: 500;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+  }
+  .leaflet-tooltip.geo-tip::before { display:none; }
+  .leaflet-tooltip.geo-tip .geo-tip-n {
+    display:block;
+    color: #93c5fd;
+    font-size: 10.5px;
+    margin-top: 2px;
+    font-weight: 400;
+  }
 
   /* ── PANEL INFO (esquina sup. derecha del mapa) ──────────────────── */
   .info-panel {
@@ -1044,6 +1107,65 @@ const map = L.map('map', { zoomControl: true, attributionControl: false })
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
   maxZoom: 18,
 }).addTo(map);
+
+// ── Capa GeoJSON: contorno de Sucre y sus 26 municipios ────────────────────
+const GEOJSON_SUCRE = __GEOJSON__;
+
+// Normalizador para hacer match con las claves del payload (sin tildes,
+// mayúsculas, trim). Debe replicar el comportamiento de Python _norm_municipio.
+function normMuni(s) {
+  if (s == null) return '';
+  let txt = String(s).normalize('NFKD').replace(/[̀-ͯ]/g, '');
+  txt = txt.toUpperCase().trim();
+  txt = txt.replace(/\s+/g, ' ').replace(/^[\s.]+|[\s.]+$/g, '');
+  return txt;
+}
+
+// Color de relleno según conteo de proyectos en el municipio.
+function fillColorMuni(n) {
+  if (!n)             return 'rgba(148, 163, 184, 0.05)';   // gris muy tenue
+  if (n >= 10)        return 'rgba(59, 130, 246, 0.35)';    // azul saturado
+  if (n >= 4)         return 'rgba(59, 130, 246, 0.25)';    // azul medio
+  return                'rgba(59, 130, 246, 0.15)';         // azul claro
+}
+
+function estiloMuni(feature) {
+  const nombre = normMuni(feature.properties.MPIO_CNMBR);
+  const n = PAYLOAD.proy_por_muni[nombre] || 0;
+  return {
+    color: 'rgba(148, 163, 184, 0.55)',  // borde gris claro
+    weight: 1,
+    fillColor: fillColorMuni(n),
+    fillOpacity: 1,
+  };
+}
+
+let geoLayer = null;
+if (GEOJSON_SUCRE && GEOJSON_SUCRE.features && GEOJSON_SUCRE.features.length) {
+  geoLayer = L.geoJSON(GEOJSON_SUCRE, {
+    style: estiloMuni,
+    onEachFeature: (feature, layer) => {
+      const nombreOriginal = feature.properties.MPIO_CNMBR || '';
+      const nombreNorm = normMuni(nombreOriginal);
+      const n = PAYLOAD.proy_por_muni[nombreNorm] || 0;
+      const proyTxt = n === 1 ? '1 proyecto' : (n + ' proyectos');
+      layer.bindTooltip(
+        `<strong>${nombreOriginal}</strong><span class="geo-tip-n">${proyTxt}</span>`,
+        { sticky: true, className: 'geo-tip', direction: 'top', offset: [0, -4] }
+      );
+      layer.on('mouseover', e => {
+        e.target.setStyle({ weight: 2, color: '#e2e8f0',
+                            fillOpacity: 1, fillColor: 'rgba(96, 165, 250, 0.45)' });
+        e.target.bringToFront();
+      });
+      layer.on('mouseout', e => geoLayer.resetStyle(e.target));
+    },
+  }).addTo(map);
+
+  // Auto-encuadre al departamento si tenemos polígonos.
+  try { map.fitBounds(geoLayer.getBounds(), { padding: [20, 20] }); }
+  catch (e) { /* fallback al centro hardcodeado */ }
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function estadoColor(estado) {
