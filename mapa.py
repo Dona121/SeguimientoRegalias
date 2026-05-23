@@ -246,6 +246,26 @@ def _detectar_col_municipios(cols) -> str:
     return None
 
 
+def _clasificar_impacto(municipios: list) -> str:
+    """
+    Clasifica el alcance del proyecto en función del número de municipios a los
+    que apunta. La lista de entrada ya viene normalizada y, en el caso de
+    «TODO EL DEPARTAMENTO DE SUCRE», ya está expandida a los 26 municipios.
+
+      • Departamental → llega a TODOS los municipios del departamento (26).
+      • Subregional   → llega a más de un municipio pero no a todos.
+      • Municipal     → llega a un único municipio.
+    """
+    if not municipios:
+        return None
+    n_unicos = len(set(municipios))
+    if n_unicos >= len(_TODOS_MUNICIPIOS_NORM):
+        return "Departamental"
+    if n_unicos > 1:
+        return "Subregional"
+    return "Municipal"
+
+
 def _recolectar_proyectos(df_depto, df_descent, df_municipios):
     """
     Itera los 3 DataFrames y devuelve una lista plana de tuplas
@@ -282,6 +302,7 @@ def _recolectar_proyectos(df_depto, df_descent, df_municipios):
             if not municipios:
                 continue
             p = _proyecto_desde_fila(r, fuente)
+            p["impacto"] = _clasificar_impacto(municipios)
             salida.append((p, municipios))
             n_con_mun += 1
         diag.append(f"{fuente}: {df.height} filas, columna «{col_mun}», "
@@ -372,10 +393,38 @@ def render_mapa(df_depto, df_descent, df_municipios):
         display: block !important;
     }
     /* — Fondo del main y header transparentes (estilo dark) — */
-    section.main { background: #0b1220 !important; }
-    header[data-testid="stHeader"] {
-        background: transparent !important;
-        z-index: 999999;
+    section.main { background: #0b1220 !important; padding-top: 0 !important; }
+    /* Ocultar por completo TODA variante de header/toolbar de Streamlit:
+       la barra gris que aparecía arriba en el primer render. Cubrimos los
+       distintos data-testid usados en versiones recientes (stHeader,
+       stAppHeader) y la decoración superior. */
+    header[data-testid="stHeader"],
+    div[data-testid="stHeader"],
+    [data-testid="stAppHeader"],
+    header.stAppHeader,
+    .stAppHeader,
+    [data-testid="stDecoration"],
+    [data-testid="stToolbar"],
+    [data-testid="stStatusWidget"],
+    [data-testid="stConnectionStatus"],
+    #MainMenu {
+        display: none !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        max-height: 0 !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+    }
+    /* El control flotante para reabrir el sidebar SÍ debe seguir clickeable,
+       aunque vivimos junto al header. Lo extraemos como overlay propio. */
+    [data-testid="stSidebarCollapsedControl"] {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        height: auto !important;
+        z-index: 1000000 !important;
     }
     /* Sidebar nativo: NO lo forzamos colapsado — Streamlit lo maneja con el
        botón « del usuario. Solo le damos un fondo oscuro para que combine
@@ -389,11 +438,66 @@ def render_mapa(df_depto, df_descent, df_municipios):
         background: rgba(15, 23, 42, 0.85) !important;
         border-radius: 8px;
     }
-    /* Quitar el botón "Deploy" y menús de Streamlit en esta vista */
-    [data-testid="stToolbar"], [data-testid="stDecoration"], #MainMenu {
-        display: none !important;
-    }
     </style>
+    <script>
+    /* Estrategia anti-barra-gris en 3 capas:
+       1) Ocultar todos los selectores conocidos de Streamlit (display:none).
+       2) Ocultar TODOS los <header> del documento (más amplio).
+       3) Capa oscura fija en el tope que pinta por encima de lo que pueda
+          quedar visible. Se inserta vía JS para garantizar que esté
+          presente desde el primer paint. */
+    (function() {
+        const SELECTORES = [
+            'header[data-testid="stHeader"]',
+            'div[data-testid="stHeader"]',
+            '[data-testid="stAppHeader"]',
+            'header.stAppHeader',
+            '[data-testid="stDecoration"]',
+            '[data-testid="stToolbar"]',
+            '[data-testid="stStatusWidget"]',
+            '[data-testid="stConnectionStatus"]',
+            '[data-testid="stHeaderActionElements"]',
+            '#MainMenu'
+        ];
+        function ocultar() {
+            // Selectores específicos
+            SELECTORES.forEach(sel => {
+                document.querySelectorAll(sel).forEach(el => {
+                    el.style.display    = 'none';
+                    el.style.height     = '0';
+                    el.style.minHeight  = '0';
+                    el.style.visibility = 'hidden';
+                });
+            });
+            // Cualquier <header> del documento (excepto los nuestros)
+            document.querySelectorAll('header').forEach(el => {
+                if (el.closest('.layout, .leaflet-control-container')) return;
+                el.style.display = 'none';
+            });
+            // Asegurar el overlay oscuro
+            if (!document.getElementById('seg-top-cover')) {
+                const cover = document.createElement('div');
+                cover.id = 'seg-top-cover';
+                cover.style.cssText = `
+                    position: fixed; top: 0; left: 0; right: 0;
+                    height: 64px; background: #0b1220;
+                    z-index: 999990; pointer-events: none;
+                    border: 0;
+                `;
+                document.body.appendChild(cover);
+            }
+        }
+        ocultar();
+        const obs = new MutationObserver(ocultar);
+        obs.observe(document.body || document.documentElement, {
+            childList: true, subtree: true
+        });
+        setTimeout(ocultar,  50);
+        setTimeout(ocultar, 200);
+        setTimeout(ocultar, 800);
+        setTimeout(ocultar, 2000);
+    })();
+    </script>
     """, unsafe_allow_html=True)
 
     # 1) Recolectar proyectos
@@ -552,20 +656,94 @@ _TEMPLATE_HTML = r"""
   }
   .side-search-wrap { padding: 0 18px 12px; }
   .side-search {
-    width: 100%; background:#0b1220; border:1px solid #1e293b;
+    width: 100%; box-sizing: border-box;
+    background:#0b1220; border:1px solid #1e293b;
     color:#e5e7eb; padding: 8px 10px; border-radius:8px;
     font-size:0.78rem; outline:none;
   }
   .side-search:focus { border-color:#3b82f6; }
+  .filtro-wrap { position: relative; box-sizing: border-box; width: 100%; }
+  .filtro-wrap, .filtro-wrap * { box-sizing: border-box; }
 
   .side-filters { padding: 0 18px 4px; display:flex; flex-direction:column; gap:8px; }
   .side-select {
-    width:100%; background:#0b1220; border:1px solid #1e293b; color:#e5e7eb;
+    width:100%; box-sizing: border-box;
+    background:#0b1220; border:1px solid #1e293b; color:#e5e7eb;
     padding: 8px 10px; border-radius:8px; font-size:0.78rem; outline:none;
     appearance: none;
     text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
   }
   .side-select option { background:#0b1220; color:#e5e7eb; }
+
+  /* — Tooltip por filtro: estilo del nodo flotante creado por JS — */
+  .filtro-tip {
+    position: fixed;
+    width: 260px;
+    background: #1e293b;
+    color: #f1f5f9;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    font-size: 0.72rem;
+    line-height: 1.45;
+    font-weight: 500;
+    white-space: normal;
+    text-transform: none; letter-spacing: 0;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateX(-6px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    z-index: 100000;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.55),
+                0 0 0 1px rgba(96,165,250,0.10);
+  }
+  .filtro-tip.is-visible { opacity: 1; transform: translateX(0); }
+  .filtro-tip::before {
+    content: '';
+    position: absolute;
+    left: -12px; top: 50%;
+    transform: translateY(-50%);
+    border: 6px solid transparent;
+    border-right-color: #1e293b;
+  }
+
+  /* — Bloque destacado del filtro de Impacto — */
+  .impacto-block {
+    margin: 4px 18px 6px;
+    padding: 10px 12px 12px;
+    background: linear-gradient(135deg, rgba(96,165,250,0.10), rgba(6,182,212,0.05));
+    border: 1px solid rgba(96,165,250,0.35);
+    border-left: 3px solid #60a5fa;
+    border-radius: 10px;
+    box-shadow: 0 0 0 1px rgba(96,165,250,0.08), 0 4px 12px rgba(15,23,42,0.55);
+  }
+  .impacto-label {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.62rem; text-transform: uppercase; letter-spacing: 1.2px;
+    color: #93c5fd; font-weight: 800; margin-bottom: 8px;
+  }
+  .pulse-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #60a5fa;
+    box-shadow: 0 0 0 0 rgba(96,165,250,0.7);
+    animation: pulse-blue 2s infinite;
+    flex-shrink: 0;
+  }
+  @keyframes pulse-blue {
+    0%   { box-shadow: 0 0 0 0   rgba(96,165,250,0.7); }
+    70%  { box-shadow: 0 0 0 7px rgba(96,165,250,0);   }
+    100% { box-shadow: 0 0 0 0   rgba(96,165,250,0);   }
+  }
+  .side-select.is-emphasized {
+    border-color: #3b82f6;
+    background: #0b1326;
+    font-weight: 600;
+    color: #fff;
+  }
+  .side-select.is-emphasized:focus {
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 3px rgba(96,165,250,0.25);
+  }
 
   .resumen-grid {
     padding: 4px 18px 18px;
@@ -723,23 +901,53 @@ _TEMPLATE_HTML = r"""
 
     <div class="side-section-title">Búsqueda</div>
     <div class="side-search-wrap">
-      <input id="f-buscar" class="side-search" placeholder="Buscar por BPIN o nombre…" />
+      <div class="filtro-wrap" data-tip="Filtra proyectos cuyo BPIN o nombre contenga el texto que escribas. Buscador en vivo, no distingue mayúsculas.">
+        <input id="f-buscar" class="side-search" placeholder="Buscar por BPIN o nombre…" />
+      </div>
     </div>
 
     <div class="side-section-title">Filtros rápidos</div>
     <div class="side-filters">
-      <select id="f-fuente" class="side-select">
-        <option value="">Todas las fuentes</option>
-      </select>
-      <select id="f-estado" class="side-select">
-        <option value="">Todos los estados</option>
-      </select>
-      <select id="f-sector" class="side-select">
-        <option value="">Todos los sectores</option>
-      </select>
-      <select id="f-municipio" class="side-select">
-        <option value="">Todos los municipios</option>
-      </select>
+      <div class="filtro-wrap" data-tip="Filtra por la tabla de origen del proyecto: Departamento (matriz de seguimiento), Descentralizadas u Otros municipios.">
+        <select id="f-fuente" class="side-select">
+          <option value="">Todas las fuentes</option>
+        </select>
+      </div>
+      <div class="filtro-wrap" data-tip="Filtra por la entidad o secretaría responsable (Departamento) o el ejecutor (Descentralizadas / Municipios).">
+        <select id="f-entidad" class="side-select">
+          <option value="">Todas las entidades / ejecutores</option>
+        </select>
+      </div>
+      <div class="filtro-wrap" data-tip="Filtra por el estado del proyecto: Sin contratar, Contratado sin acta, En ejecución, Terminado, Para cierre o Suspendido.">
+        <select id="f-estado" class="side-select">
+          <option value="">Todos los estados</option>
+        </select>
+      </div>
+      <div class="filtro-wrap" data-tip="Filtra por el sector al que pertenece el proyecto (educación, salud, vivienda, etc.).">
+        <select id="f-sector" class="side-select">
+          <option value="">Todos los sectores</option>
+        </select>
+      </div>
+      <div class="filtro-wrap" data-tip="Muestra únicamente el municipio seleccionado en el mapa. Útil para hacer foco en un solo punto del departamento.">
+        <select id="f-municipio" class="side-select">
+          <option value="">Todos los municipios</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="filtro-wrap" data-tip="Filtra por alcance territorial del proyecto: Departamental (cubre los 26 municipios), Subregional (afecta varios municipios) o Municipal (un único municipio).">
+      <div class="impacto-block">
+        <div class="impacto-label">
+          <span class="pulse-dot"></span>
+          <span>Impacto</span>
+        </div>
+        <select id="f-impacto" class="side-select is-emphasized">
+          <option value="">Todos los impactos</option>
+          <option value="Departamental">Departamental · todo Sucre</option>
+          <option value="Subregional">Subregional · varios municipios</option>
+          <option value="Municipal">Municipal · un municipio</option>
+        </select>
+      </div>
     </div>
 
     <div class="side-section-title">Resumen general</div>
@@ -936,9 +1144,11 @@ function poblarSelect(sel, valores) {
 function aplicarFiltros() {
   const q  = (document.getElementById('f-buscar').value || '').trim().toLowerCase();
   const fu = document.getElementById('f-fuente').value;
+  const en = document.getElementById('f-entidad').value;
   const es = document.getElementById('f-estado').value;
   const sc = document.getElementById('f-sector').value;
   const mu = document.getElementById('f-municipio').value;
+  const im = document.getElementById('f-impacto').value;
 
   const filtrados = [];
   let total = 0;
@@ -949,8 +1159,10 @@ function aplicarFiltros() {
     if (mu && g.nombre.toUpperCase() !== mu) return;
     const proyFilt = g.proyectos.filter(p => {
       if (fu && p.fuente !== fu) return false;
+      if (en && (p.entidad || '') !== en) return false;
       if (es && p.estado !== es) return false;
       if (sc && (p.sector || '') !== sc) return false;
+      if (im && (p.impacto || '') !== im) return false;
       if (q) {
         const hay = (p.bpin + ' ' + p.nombre).toLowerCase();
         if (!hay.includes(q)) return false;
@@ -999,16 +1211,69 @@ function aplicarFiltros() {
   });
 }
 
+// ── Tooltip flotante para filtros ──────────────────────────────────────────
+// Renderizamos el tooltip como un div fixed appendido a body para que NO
+// quede clipeado por el overflow:hidden de .sidebar.
+(function initTooltips() {
+  let tipEl = null;
+  function ensureTipEl() {
+    if (tipEl) return tipEl;
+    tipEl = document.createElement('div');
+    tipEl.className = 'filtro-tip';
+    document.body.appendChild(tipEl);
+    return tipEl;
+  }
+  function show(wrap) {
+    const text = wrap.getAttribute('data-tip');
+    if (!text) return;
+    const tip = ensureTipEl();
+    tip.textContent = text;
+    const rect = wrap.getBoundingClientRect();
+    // Posicionamos a la derecha del filtro, centrado vertical
+    const left = rect.right + 14;
+    const top  = rect.top + (rect.height / 2);
+    tip.style.left = left + 'px';
+    tip.style.top  = (top - 26) + 'px';  // 26 ≈ mitad del alto típico del tip
+    // Si se saldría por la derecha, lo ponemos a la izquierda
+    requestAnimationFrame(() => {
+      const tRect = tip.getBoundingClientRect();
+      if (tRect.right > window.innerWidth - 8) {
+        tip.style.left = (rect.left - tRect.width - 14) + 'px';
+      }
+      tip.classList.add('is-visible');
+    });
+  }
+  function hide() {
+    if (tipEl) tipEl.classList.remove('is-visible');
+  }
+  function wire() {
+    document.querySelectorAll('.filtro-wrap').forEach(w => {
+      if (w.dataset.tipWired === '1') return;
+      w.dataset.tipWired = '1';
+      w.addEventListener('mouseenter', () => show(w));
+      w.addEventListener('mouseleave', hide);
+      w.addEventListener('focusin',    () => show(w));
+      w.addEventListener('focusout',   hide);
+    });
+  }
+  wire();
+  // Re-wire por si el DOM se construye después
+  setTimeout(wire, 100);
+  setTimeout(wire, 500);
+})();
+
 // ── Inicialización ─────────────────────────────────────────────────────────
 (function init() {
   // Populate select options
-  const fuentes = new Set(), estados = new Set(), sectores = new Set(), munics = new Set();
+  const fuentes = new Set(), entidades = new Set(), estados = new Set(),
+        sectores = new Set(), munics = new Set();
   allGrupos.forEach(g => {
     munics.add(g.nombre.toUpperCase());
     g.proyectos.forEach(p => {
-      if (p.fuente) fuentes.add(p.fuente);
-      if (p.estado) estados.add(p.estado);
-      if (p.sector) sectores.add(p.sector);
+      if (p.fuente)  fuentes.add(p.fuente);
+      if (p.entidad) entidades.add(p.entidad);
+      if (p.estado)  estados.add(p.estado);
+      if (p.sector)  sectores.add(p.sector);
     });
   });
   // Fuentes con label amigable
@@ -1018,12 +1283,13 @@ function aplicarFiltros() {
     op.value = f; op.textContent = PAYLOAD.fuentes[f] || f;
     selFu.appendChild(op);
   });
-  poblarSelect(document.getElementById('f-estado'), estados);
-  poblarSelect(document.getElementById('f-sector'), sectores);
+  poblarSelect(document.getElementById('f-entidad'),   entidades);
+  poblarSelect(document.getElementById('f-estado'),    estados);
+  poblarSelect(document.getElementById('f-sector'),    sectores);
   poblarSelect(document.getElementById('f-municipio'), munics);
 
   // Wire events
-  ['f-buscar','f-fuente','f-estado','f-sector','f-municipio'].forEach(id => {
+  ['f-buscar','f-fuente','f-entidad','f-estado','f-sector','f-municipio','f-impacto'].forEach(id => {
     const el = document.getElementById(id);
     el.addEventListener('input',  aplicarFiltros);
     el.addEventListener('change', aplicarFiltros);
