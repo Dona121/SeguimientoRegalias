@@ -696,6 +696,76 @@ else:
     label_agrup_kpi = "Entidades"
     sub_agrup_kpi   = "secretarías / dependencias"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Aplicar los filtros del tab "Proyectos" también a las KPIs del header.
+# Los widgets se renderizan más abajo dentro del tab, pero como Streamlit
+# re-ejecuta TODO el script en cada interacción, sus valores ya están en
+# st.session_state desde el rerun anterior (con explicit key=). Los leemos
+# aquí para que las tarjetas Total proyectos / Entidades / Proyectos por
+# estado reflejen exactamente el mismo subconjunto que se ve en el tab.
+# ─────────────────────────────────────────────────────────────────────────────
+def _aplicar_filtros_kpi(df_in, vista_actual):
+    """Filtra df_kpi según los valores actuales de los filtros del tab
+    Proyectos correspondientes a la vista activa. Devuelve df filtrado.
+    Si los filtros no existen aún (primer render) no filtra nada."""
+    df_out = df_in
+    if vista_actual == "Departamento":
+        _busq = (st.session_state.get("busq_dpto") or "").strip().lower()
+        if _busq and "NOMBRE PROYECTO" in df_out.columns:
+            df_out = df_out.filter(
+                pl.col("NOMBRE PROYECTO").str.to_lowercase().str.contains(_busq, literal=True)
+                | pl.col("BPIN").cast(pl.Utf8).str.to_lowercase().str.contains(_busq, literal=True)
+            )
+        _ent = st.session_state.get("ms_ent_dpto") or []
+        if _ent and "ENTIDAD O SECRETARIA" in df_out.columns:
+            df_out = df_out.filter(pl.col("ENTIDAD O SECRETARIA").is_in(_ent))
+        _est = st.session_state.get("ms_est_dpto") or []
+        if _est and "ESTADO PROYECTO" in df_out.columns:
+            df_out = df_out.filter(pl.col("ESTADO PROYECTO").is_in(_est))
+        _cont = st.session_state.get("ms_cont_dpto") or []
+        if _cont and "ESTADO CONTRATO" in df_out.columns:
+            df_out = df_out.filter(pl.col("ESTADO CONTRATO").is_in(_cont))
+        _resp = st.session_state.get("ms_resp_dpto") or []
+        if _resp and "RESPONSABLE CARGUE EN GESPROY" in df_out.columns:
+            df_out = df_out.filter(pl.col("RESPONSABLE CARGUE EN GESPROY").is_in(_resp))
+    elif vista_actual == "Descentralizadas":
+        _busq = (st.session_state.get("busq_d") or "").strip().lower()
+        if _busq:
+            nombre_col = "NOMBRE DEL PROYECTO" if "NOMBRE DEL PROYECTO" in df_out.columns else None
+            if nombre_col:
+                df_out = df_out.filter(
+                    pl.col(nombre_col).str.to_lowercase().str.contains(_busq, literal=True)
+                    | pl.col("BPIN").cast(pl.Utf8).str.to_lowercase().str.contains(_busq, literal=True)
+                )
+            else:
+                df_out = df_out.filter(
+                    pl.col("BPIN").cast(pl.Utf8).str.to_lowercase().str.contains(_busq, literal=True)
+                )
+        _eje = st.session_state.get("ms_eje_d") or []
+        if _eje and "EJECUTOR" in df_out.columns:
+            df_out = df_out.filter(pl.col("EJECUTOR").is_in(_eje))
+    elif vista_actual == "Municipios":
+        _busq = (st.session_state.get("busq_m") or "").strip().lower()
+        if _busq:
+            nombre_col = "NOMBRE DEL PROYECTO" if "NOMBRE DEL PROYECTO" in df_out.columns else None
+            if nombre_col:
+                df_out = df_out.filter(
+                    pl.col(nombre_col).str.to_lowercase().str.contains(_busq, literal=True)
+                    | pl.col("BPIN").cast(pl.Utf8).str.to_lowercase().str.contains(_busq, literal=True)
+                )
+            else:
+                df_out = df_out.filter(
+                    pl.col("BPIN").cast(pl.Utf8).str.to_lowercase().str.contains(_busq, literal=True)
+                )
+        _eje = st.session_state.get("ms_eje_m") or []
+        if _eje and "EJECUTOR" in df_out.columns:
+            df_out = df_out.filter(pl.col("EJECUTOR").is_in(_eje))
+    return df_out
+
+# Sustituir df_kpi por la versión filtrada — todos los cálculos posteriores
+# (total, entidades, conteo por estado) usan este df filtrado.
+df_kpi = _aplicar_filtros_kpi(df_kpi, vista)
+
 total_proy      = df_kpi.height
 total_entidades = df_kpi[col_agrup_kpi].n_unique() if col_agrup_kpi in df_kpi.columns else 0
 suspendidos     = (int(df_f["Suspendidos"].drop_nulls().sum())
@@ -1172,24 +1242,29 @@ if tab_proyectos is not None:
 
     fc1, fc2, fc3 = st.columns([2, 1.4, 1.4])
     with fc1:
+        # key="busq_dpto" → expone el valor en st.session_state para que las
+        # KPIs del header se filtren con el mismo input.
         busqueda = st.text_input("busqueda_proy", placeholder="Buscar por BPIN o nombre…",
-                                 label_visibility="collapsed")
+                                 label_visibility="collapsed", key="busq_dpto")
     with fc2:
         entidades_proy = sorted(df_f["ENTIDAD O SECRETARIA"].drop_nulls().unique().to_list())
         sel_ent_proy   = st.multiselect("Entidad", entidades_proy,
                                         placeholder="Todas las entidades",
-                                        label_visibility="collapsed")
+                                        label_visibility="collapsed",
+                                        key="ms_ent_dpto")
     with fc3:
         estados_proy_opts = sorted(df_f["ESTADO PROYECTO"].drop_nulls().unique().to_list())
         sel_est_proy      = st.multiselect("Estado proyecto", estados_proy_opts,
                                            placeholder="Todos los estados",
-                                           label_visibility="collapsed")
+                                           label_visibility="collapsed",
+                                           key="ms_est_dpto")
     fc4, fc5 = st.columns([1.4, 1.6])
     with fc4:
         estados_cont_opts = sorted(df_f["ESTADO CONTRATO"].drop_nulls().unique().to_list())
         sel_cont_proy     = st.multiselect("Estado contrato", estados_cont_opts,
                                            placeholder="Todos los contratos",
-                                           label_visibility="collapsed")
+                                           label_visibility="collapsed",
+                                           key="ms_cont_dpto")
     with fc5:
         # Filtro por responsable de cargue en GESPROY (columna nueva del archivo).
         if "RESPONSABLE CARGUE EN GESPROY" in df_f.columns:
@@ -2357,7 +2432,7 @@ if tab_d_proyectos is not None and df_descent_hitos is not None:
     fcd1, fcd2 = st.columns([2, 1.6])
     with fcd1:
         busq_d = st.text_input("busq_descent", placeholder="Buscar por BPIN o nombre…",
-                               label_visibility="collapsed")
+                               label_visibility="collapsed", key="busq_d")
     with fcd2:
         ejecutores_d = sorted(df_descent_hitos["EJECUTOR"].drop_nulls().unique().to_list())
         sel_eje_d = st.multiselect("Ejecutor (Descent.)", ejecutores_d,
@@ -2793,7 +2868,7 @@ if tab_m_proyectos is not None and df_municipios is not None:
     fmc1, fmc2 = st.columns([2, 1.6])
     with fmc1:
         busq_m = st.text_input("busq_munic", placeholder="Buscar por BPIN o nombre…",
-                               label_visibility="collapsed")
+                               label_visibility="collapsed", key="busq_m")
     with fmc2:
         ejecutores_m = sorted(df_municipios["EJECUTOR"].drop_nulls().unique().to_list())
         sel_eje_m = st.multiselect("Municipio", ejecutores_m,

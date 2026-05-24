@@ -220,6 +220,9 @@ def _contratos_panel(bpin_str, df_cttos):
         modalidad = html.escape(ctto.get("MODALIDAD CONTRATACION") or "—")
         tipo      = html.escape(ctto.get("TIPO CONTRATO") or "—")
         objeto    = html.escape(ctto.get("CONTRATO OBJETO") or "—")
+        # Fecha de terminación (FECHA FINAL REAL) — ya parseada como pl.Date
+        # en procesar_contratos. Mostramos DD/MM/YYYY si existe.
+        fecha_term = _fmt_date(ctto.get("FECHA FINAL REAL"))
 
         bar_px = 0
         if valor and v_max > v_min:
@@ -238,6 +241,7 @@ def _contratos_panel(bpin_str, df_cttos):
                 </div>
             </td>
             <td><span class="ctto-estado-pill" style="background:{bg_e};color:{fg_e};border:1px solid {fg_e}40">{html.escape(ctto.get("ESTADO CONTRATO") or "—")}</span></td>
+            <td style="font-size:0.73rem;color:{C['text']};white-space:nowrap;text-align:center">{fecha_term}</td>
             <td><div class="ctto-objeto">{objeto}</div></td>
         </tr>""")
 
@@ -249,6 +253,7 @@ def _contratos_panel(bpin_str, df_cttos):
         <th class="ctto-col1">No. proceso</th>
         <th>Modalidad</th><th>Tipo</th>
         <th>Valor total</th><th>Estado</th>
+        <th>Fecha de<br>terminación</th>
         <th>Objeto del contrato</th>
     </tr></thead>
     <tbody>{rows}</tbody>
@@ -690,6 +695,10 @@ def _estado_tooltip_html(est_proy, row_data=None):
             )
 
     # ── Tooltip: una sola columna, secciones con separadores ─────────────────
+    # Nota: las secciones "Para avanzar" y "Acción sugerida" fueron removidas
+    # del tooltip de Departamento y Descentralizadas a petición del cliente.
+    # La info sigue disponible en las claves "para_avanzar" / "requisitos" del
+    # diccionario INFO por si más adelante se quiere mostrar en otra parte.
     tooltip_body = (
         f'<span class="etip-estado">{html.escape(est_proy)}</span>'
         f'<p class="etip-desc">{html.escape(info["descripcion"])}</p>'
@@ -709,17 +718,6 @@ def _estado_tooltip_html(est_proy, row_data=None):
            f'<div class="etip-section-title">Fechas en GESPROY</div>'
            f'<div class="etip-fechas">{fechas_html_rows}</div>'
            if fechas_html_rows else '')
-
-        + f'<hr class="etip-sep">'
-        f'<div class="etip-section-title">Para avanzar</div>'
-        f'<div class="etip-row">{html.escape(info["para_avanzar"])}</div>'
-        f'<div class="etip-small">{html.escape(info["fecha_avance"])}</div>'
-
-        + f'<hr class="etip-sep">'
-        f'<div class="etip-accion">'
-        f'<span class="etip-accion-label">Acción sugerida</span>'
-        f'{html.escape(info["requisitos"])}'
-        f'</div>'
     )
 
     extra_style = "font-weight:700;" if eu == "SUSPENDIDO" else ""

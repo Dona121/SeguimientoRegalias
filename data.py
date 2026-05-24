@@ -625,6 +625,7 @@ def procesar_contratos(file_bytes):
         "CONTRATO OBJETO",
         "CONTRATO VALOR TOTAL",
         "ESTADO CONTRATO",
+        "FECHA FINAL REAL",   # ← Fecha de terminación del contrato
     ]
     diag = []
     try:
@@ -736,6 +737,28 @@ def procesar_contratos(file_bytes):
             .str.to_uppercase()
             .alias("ESTADO CONTRATO")
         )
+
+        # 7. FECHA FINAL REAL → pl.Date (intenta varios formatos comunes).
+        #    Si la celda viene vacía o ilegible, queda como null y luego
+        #    se muestra como "—" en _contratos_panel.
+        if "FECHA FINAL REAL" in df.columns:
+            cleaned = (
+                pl.col("FECHA FINAL REAL")
+                .cast(pl.Utf8, strict=False)
+                .str.replace_all(r"[\n\r\t]", " ")
+                .str.strip_chars()
+            )
+            df = df.with_columns(
+                pl.coalesce([
+                    cleaned.str.to_date("%d/%m/%Y",              strict=False),
+                    cleaned.str.to_date("%Y-%m-%d",              strict=False),
+                    cleaned.str.to_date("%m/%d/%Y",              strict=False),
+                    cleaned.str.to_date("%d-%m-%Y",              strict=False),
+                    cleaned.str.to_datetime("%Y-%m-%dT%H:%M:%S", strict=False).dt.date(),
+                    cleaned.str.to_datetime("%Y-%m-%d %H:%M:%S", strict=False).dt.date(),
+                    cleaned.str.to_datetime("%d/%m/%Y %H:%M:%S", strict=False).dt.date(),
+                ]).alias("FECHA FINAL REAL")
+            )
 
         return (df if df.height > 0 else None), " | ".join(diag)
     except Exception as e:
