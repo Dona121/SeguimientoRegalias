@@ -319,6 +319,11 @@ def _recolectar_proyectos(df_depto, df_descent, df_municipios):
                 continue
             p = _proyecto_desde_fila(r, fuente)
             p["impacto"] = _clasificar_impacto(municipios)
+            # Lista completa de municipios cubiertos por el proyecto, en
+            # Title Case para mostrarse en el panel de detalle. Se usa para
+            # decirle al usuario "este proyecto también afecta a X, Y, Z" o
+            # bien "solo se ejecuta aquí".
+            p["municipios"] = [m.title() for m in sorted(set(municipios))]
             salida.append((p, municipios))
             n_con_mun += 1
         diag.append(f"{fuente}: {df.height} filas, columna «{col_mun}», "
@@ -923,6 +928,69 @@ _TEMPLATE_HTML = r"""
   }
   .pop-item .pop-nom { color:#e5e7eb; margin-top:3px; }
   .pop-item .pop-meta { color:#94a3b8; margin-top:3px; font-size:0.65rem; }
+  /* — Botón "Ver detalle" del popup — identidad visual fuerte sin gradientes.
+       Color sólido institucional + sombra con halo + pulso + microinteracciones. */
+  .pop-detalle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 9px;
+    padding: 7px 14px;
+    background: #2563eb;         /* Azul institucional sólido */
+    color: #fff;
+    border: 1px solid #1d4ed8;   /* Borde sólido un tono más oscuro */
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow:
+      0 4px 14px rgba(37,99,235,0.45),
+      0 0 0 1px rgba(96,165,250,0.30);
+    transition:
+      transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+      background 0.18s ease,
+      box-shadow 0.18s ease;
+    /* Pulso sutil: solo expande/contrae el halo de la sombra, no usa gradientes */
+    animation: pop-detalle-pulse 2.4s ease-in-out infinite;
+    position: relative;
+  }
+  /* Flecha como pseudo-elemento para poder animarla al hover */
+  .pop-detalle-btn::after {
+    content: '→';
+    font-size: 0.95rem;
+    font-weight: 900;
+    line-height: 1;
+    transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .pop-detalle-btn:hover {
+    transform: translateY(-2px);
+    background: #1d4ed8;          /* Sólido más oscuro al hover */
+    border-color: #1e40af;
+    box-shadow:
+      0 8px 22px rgba(37,99,235,0.65),
+      0 0 0 2px rgba(96,165,250,0.55);
+    animation: none;
+  }
+  .pop-detalle-btn:hover::after { transform: translateX(4px); }
+  .pop-detalle-btn:active {
+    transform: translateY(0);
+    background: #1e40af;
+  }
+  @keyframes pop-detalle-pulse {
+    0%, 100% {
+      box-shadow:
+        0 4px 14px rgba(37,99,235,0.45),
+        0 0 0 0   rgba(96,165,250,0.0);
+    }
+    50% {
+      box-shadow:
+        0 4px 14px rgba(37,99,235,0.55),
+        0 0 0 5px rgba(96,165,250,0.12);
+    }
+  }
 
   /* Cluster oscuro */
   .marker-cluster {
@@ -996,6 +1064,193 @@ _TEMPLATE_HTML = r"""
     .res-icon { width: 18px; height: 18px; }
     .res-lbl { font-size: 0.45rem; line-height: 1.05; }
   }
+
+  /* ── PANEL DETALLE DE PROYECTO ─────────────────────────────────────
+     Se abre al hacer clic en "Ver detalle" dentro de cualquier popup
+     de marcador. Cubre el lado derecho del mapa, deja ver el mapa
+     debajo (semi-transparente), y se cierra con X o tecla Esc. */
+  .detalle-overlay {
+    position: absolute; inset: 0;
+    background: rgba(11,18,32,0.35); z-index: 698;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  .detalle-overlay.is-open {
+    opacity: 1; pointer-events: auto;
+  }
+  .detalle-panel {
+    position: absolute; top: 0; right: 0; bottom: 0;
+    width: 380px; max-width: 92%;
+    background: #0f172a;
+    border-left: 1px solid #1e293b;
+    box-shadow: -8px 0 32px rgba(0,0,0,0.65);
+    z-index: 700;
+    transform: translateX(105%);
+    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    overflow-y: auto;
+    overflow-x: hidden;
+    color: #e5e7eb;
+    scrollbar-width: thin;
+    scrollbar-color: #334155 #0b1220;
+  }
+  .detalle-panel.is-open { transform: translateX(0); }
+  .detalle-panel::-webkit-scrollbar { width: 7px; }
+  .detalle-panel::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+  .detalle-header {
+    padding: 16px 44px 14px 18px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(15,23,42,0.98);
+    position: sticky; top: 0;
+    z-index: 5;
+    backdrop-filter: blur(6px);
+  }
+  .detalle-bpin {
+    display: inline-block;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem; font-weight: 700;
+    color: #60a5fa;
+    background: rgba(96,165,250,0.10);
+    padding: 2px 8px; border-radius: 6px;
+    margin-bottom: 6px;
+  }
+  .detalle-nombre {
+    font-size: 0.92rem; font-weight: 700;
+    color: #fff; line-height: 1.3;
+  }
+  .detalle-close {
+    position: absolute; top: 12px; right: 12px;
+    width: 28px; height: 28px;
+    border-radius: 7px;
+    background: rgba(148,163,184,0.08);
+    border: 1px solid #1e293b;
+    color: #cbd5e1;
+    font-size: 1.1rem; line-height: 1;
+    cursor: pointer; display: flex;
+    align-items: center; justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+  .detalle-close:hover { background: rgba(239,68,68,0.18); color: #fff; }
+
+  .detalle-body { padding: 16px 18px 24px; }
+
+  /* — Banner de impacto: la pieza clave que dice si el proyecto cubre
+       solo este municipio o también afecta a otros. — */
+  .detalle-impacto-banner {
+    border-radius: 10px;
+    padding: 11px 13px 12px;
+    margin-bottom: 16px;
+    border: 1px solid;
+    line-height: 1.5;
+  }
+  .detalle-impacto-banner.is-local {
+    background: rgba(16,185,129,0.10);    /* verde sólido translúcido */
+    border-color: rgba(16,185,129,0.45);
+    border-left: 3px solid #10b981;
+  }
+  .detalle-impacto-banner.is-subreg {
+    background: rgba(96,165,250,0.10);    /* azul sólido translúcido */
+    border-color: rgba(96,165,250,0.45);
+    border-left: 3px solid #60a5fa;
+  }
+  .detalle-impacto-banner.is-deptal {
+    background: rgba(245,158,11,0.10);    /* ámbar sólido translúcido */
+    border-color: rgba(245,158,11,0.45);
+    border-left: 3px solid #f59e0b;
+  }
+  .detalle-impacto-titulo {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 0.62rem; text-transform: uppercase;
+    letter-spacing: 1.0px; font-weight: 800;
+    margin-bottom: 5px;
+  }
+  .is-local .detalle-impacto-titulo { color: #6ee7b7; }
+  .is-subreg .detalle-impacto-titulo { color: #93c5fd; }
+  .is-deptal .detalle-impacto-titulo { color: #fcd34d; }
+  .detalle-impacto-titulo::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor;
+  }
+  .detalle-impacto-desc {
+    font-size: 0.78rem; color: #cbd5e1;
+  }
+  .detalle-impacto-desc strong { color: #fff; }
+  .detalle-impacto-lista {
+    margin-top: 8px;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    line-height: 1.55;
+    max-height: 150px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .detalle-impacto-lista strong { color: #cbd5e1; }
+
+  /* — Sección colapsable "Información general" — */
+  .detalle-section {
+    border-top: 1px solid #1e293b;
+    margin-top: 4px;
+  }
+  .detalle-section summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 0 10px;
+    font-size: 0.65rem; text-transform: uppercase;
+    letter-spacing: 1.1px;
+    font-weight: 700; color: #60a5fa;
+  }
+  .detalle-section summary::-webkit-details-marker { display: none; }
+  .detalle-section summary::before {
+    content: '▸'; font-size: 0.65rem;
+    transition: transform 0.18s ease;
+    color: #60a5fa;
+  }
+  .detalle-section[open] summary::before { transform: rotate(90deg); }
+  .detalle-section-body { padding-bottom: 12px; }
+
+  /* — Filas key/value de la sección general — */
+  .detalle-row {
+    display: flex; justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 7px 0;
+    border-top: 1px dashed rgba(30,41,59,0.7);
+    font-size: 0.74rem;
+  }
+  .detalle-row:first-child { border-top: none; padding-top: 4px; }
+  .detalle-row .k { color: #94a3b8; flex-shrink: 0; }
+  .detalle-row .v {
+    color: #e5e7eb; font-weight: 600;
+    text-align: right;
+    word-break: break-word;
+  }
+  .detalle-pill {
+    display: inline-block; padding: 2px 8px;
+    border-radius: 11px; font-size: 0.66rem;
+    font-weight: 700; color: #fff;
+  }
+  /* — Barras de avance compactas — */
+  .detalle-avance-wrap { margin-top: 10px; }
+  .detalle-avance-row {
+    margin-top: 10px;
+  }
+  .detalle-avance-head {
+    display: flex; justify-content: space-between;
+    font-size: 0.72rem; color: #cbd5e1; margin-bottom: 4px;
+  }
+  .detalle-avance-head .pct { font-weight: 800; color: #fff; }
+  .detalle-avance-bar {
+    height: 8px; border-radius: 5px;
+    background: #1e293b; overflow: hidden;
+  }
+  .detalle-avance-bar > div {
+    height: 100%;
+    border-radius: 5px;
+    transition: width 0.4s ease;
+  }
+  .bar-fisico    > div { background: linear-gradient(90deg,#10b981,#34d399); }
+  .bar-financ    > div { background: linear-gradient(90deg,#f59e0b,#fbbf24); }
 </style>
 </head>
 <body>
@@ -1141,6 +1396,28 @@ _TEMPLATE_HTML = r"""
       <div class="leyenda-title">Estado del proyecto</div>
       <div id="leyenda-rows"></div>
     </div>
+
+    <!-- ============ PANEL DETALLE DE PROYECTO ============ -->
+    <!-- Overlay semi-transparente para cerrar al hacer clic afuera -->
+    <div id="detalle-overlay" class="detalle-overlay"></div>
+    <aside id="detalle-panel" class="detalle-panel" aria-hidden="true">
+      <div class="detalle-header">
+        <span class="detalle-bpin" id="detalle-bpin">—</span>
+        <div class="detalle-nombre" id="detalle-nombre">—</div>
+        <button class="detalle-close" id="detalle-close" title="Cerrar (Esc)">×</button>
+      </div>
+      <div class="detalle-body">
+        <!-- Banner de impacto: se reemplaza dinámicamente con clases is-local /
+             is-subreg / is-deptal según corresponda. -->
+        <div id="detalle-impacto"></div>
+
+        <!-- Información general (única sección por ahora, expandida por defecto) -->
+        <details class="detalle-section" open>
+          <summary>Información general</summary>
+          <div class="detalle-section-body" id="detalle-general"></div>
+        </details>
+      </div>
+    </aside>
   </main>
 </div>
 
@@ -1284,8 +1561,13 @@ function dominanteColor(proyectos) {
 }
 
 function popupHtml(grupo) {
+  // Atributo data-grupo lleva el nombre del municipio CLICKEADO (no la lista
+  // completa que cubre el proyecto). El panel de detalle compara este nombre
+  // contra p.municipios para decidir si es local o multi-municipio.
+  const grupoSafe = escape(grupo.nombre);
   const items = grupo.proyectos.map(p => {
     const col = estadoColor(p.estado);
+    const bpinSafe = escape(p.bpin || '');
     return `
       <div class="pop-item">
         <span class="pop-bpin">${escape(p.bpin || '—')}</span>
@@ -1297,6 +1579,10 @@ function popupHtml(grupo) {
           ${p.sector ? ' · ' + escape(p.sector) : ''}
           ${p.avance_fisico != null ? ' · físico ' + p.avance_fisico + '%' : ''}
         </div>
+        <button type="button" class="pop-detalle-btn"
+                data-bpin="${bpinSafe}" data-grupo="${grupoSafe}">
+          <span>Ver detalle</span>
+        </button>
       </div>`;
   }).join('');
   return `
@@ -1557,6 +1843,160 @@ function aplicarFiltros() {
   }
 
   aplicarFiltros();
+})();
+
+// ── PANEL DETALLE: lógica de apertura, cierre y llenado del contenido ────
+// Se activa al hacer clic en un botón "Ver detalle" dentro de cualquier popup
+// de marcador. Usa event delegation a nivel de documento porque los popups
+// se renderizan/destruyen dinámicamente.
+(function() {
+  const overlay  = document.getElementById('detalle-overlay');
+  const panel    = document.getElementById('detalle-panel');
+  const closeBtn = document.getElementById('detalle-close');
+  if (!panel) return;
+
+  function buscarProyecto(bpin, grupoNombre) {
+    // Busca el proyecto en el dataset COMPLETO (allGrupos), no en visibles —
+    // así el detalle funciona aunque el proyecto esté oculto por filtro.
+    if (!bpin) return null;
+    // Primero busca en el grupo "clickeado"; si no aparece, escanea todos.
+    for (const g of allGrupos) {
+      if (g.nombre === grupoNombre) {
+        for (const p of g.proyectos) {
+          if (String(p.bpin) === String(bpin)) return p;
+        }
+      }
+    }
+    for (const g of allGrupos) {
+      for (const p of g.proyectos) {
+        if (String(p.bpin) === String(bpin)) return p;
+      }
+    }
+    return null;
+  }
+
+  function bannerImpactoHtml(p, grupoActual) {
+    // p.municipios es la lista en Title Case con todos los municipios
+    // que cubre el proyecto. Comparamos con grupoActual (el municipio
+    // donde el usuario hizo clic) para decidir el banner.
+    const lista = Array.isArray(p.municipios) ? p.municipios : [];
+    const actualLow = String(grupoActual || '').toLowerCase();
+    const cubreSoloEste = lista.length === 1 &&
+                          lista[0].toLowerCase() === actualLow;
+    const esDeptal = p.impacto === 'Departamental';
+
+    if (cubreSoloEste) {
+      return `
+        <div class="detalle-impacto-banner is-local">
+          <div class="detalle-impacto-titulo">Impacto local</div>
+          <div class="detalle-impacto-desc">
+            Este proyecto se ejecuta
+            <strong>únicamente en ${escape(grupoActual)}</strong>.
+            No tiene cobertura registrada en otros municipios.
+          </div>
+        </div>`;
+    }
+    if (esDeptal) {
+      return `
+        <div class="detalle-impacto-banner is-deptal">
+          <div class="detalle-impacto-titulo">Impacto departamental</div>
+          <div class="detalle-impacto-desc">
+            Este proyecto cubre <strong>los ${lista.length}
+            municipios</strong> del departamento de Sucre,
+            incluyendo a <strong>${escape(grupoActual)}</strong>.
+          </div>
+        </div>`;
+    }
+    // Subregional: lista los OTROS municipios además del actual
+    const otros = lista.filter(m => m.toLowerCase() !== actualLow);
+    const sufijo = otros.length === 1 ? '' : 's';
+    const otrosHtml = otros.map(escape).join('</strong> · <strong>');
+    return `
+      <div class="detalle-impacto-banner is-subreg">
+        <div class="detalle-impacto-titulo">Impacto subregional</div>
+        <div class="detalle-impacto-desc">
+          Además de <strong>${escape(grupoActual)}</strong>, este
+          proyecto también afecta a <strong>${otros.length}
+          municipio${sufijo}</strong>:
+        </div>
+        <div class="detalle-impacto-lista">
+          <strong>${otrosHtml}</strong>
+        </div>
+      </div>`;
+  }
+
+  function rowKV(k, v, pillColor) {
+    if (v == null || v === '') return '';
+    const vHtml = pillColor
+      ? `<span class="detalle-pill" style="background:${pillColor}">${escape(v)}</span>`
+      : escape(v);
+    return `<div class="detalle-row">
+              <span class="k">${escape(k)}</span>
+              <span class="v">${vHtml}</span>
+            </div>`;
+  }
+
+  function barAvance(label, pct, claseColor) {
+    if (pct == null) return '';
+    const w = Math.max(0, Math.min(100, Number(pct) || 0));
+    return `
+      <div class="detalle-avance-row">
+        <div class="detalle-avance-head">
+          <span>${escape(label)}</span>
+          <span class="pct">${Number(pct).toFixed(1)}%</span>
+        </div>
+        <div class="detalle-avance-bar ${claseColor}">
+          <div style="width:${w}%"></div>
+        </div>
+      </div>`;
+  }
+
+  function abrir(bpin, grupoNombre) {
+    const p = buscarProyecto(bpin, grupoNombre);
+    if (!p) return;
+    document.getElementById('detalle-bpin').textContent   = p.bpin || '—';
+    document.getElementById('detalle-nombre').textContent = p.nombre || '(Sin nombre)';
+    document.getElementById('detalle-impacto').innerHTML  = bannerImpactoHtml(p, grupoNombre);
+
+    let html = '';
+    html += rowKV('Entidad / Ejecutor', p.entidad);
+    html += rowKV('Fuente', PAYLOAD.fuentes[p.fuente] || p.fuente);
+    if (p.sector) html += rowKV('Sector', p.sector);
+    html += rowKV('Estado del proyecto', p.estado, estadoColor(p.estado));
+
+    if (p.avance_fisico != null || p.avance_financiero != null) {
+      html += '<div class="detalle-avance-wrap">';
+      if (p.avance_fisico    != null) html += barAvance('Avance físico',     p.avance_fisico,    'bar-fisico');
+      if (p.avance_financiero != null) html += barAvance('Avance financiero', p.avance_financiero, 'bar-financ');
+      html += '</div>';
+    }
+
+    document.getElementById('detalle-general').innerHTML = html;
+    panel.classList.add('is-open');
+    overlay.classList.add('is-open');
+    panel.setAttribute('aria-hidden', 'false');
+  }
+
+  function cerrar() {
+    panel.classList.remove('is-open');
+    overlay.classList.remove('is-open');
+    panel.setAttribute('aria-hidden', 'true');
+  }
+
+  // Event delegation: cualquier clic en .pop-detalle-btn dispara la apertura.
+  document.addEventListener('click', (e) => {
+    const btn = e.target && e.target.closest && e.target.closest('.pop-detalle-btn');
+    if (btn) {
+      e.stopPropagation();
+      abrir(btn.getAttribute('data-bpin'), btn.getAttribute('data-grupo'));
+    }
+  });
+
+  closeBtn.addEventListener('click', cerrar);
+  overlay.addEventListener('click', cerrar);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && panel.classList.contains('is-open')) cerrar();
+  });
 })();
 </script>
 </body>
