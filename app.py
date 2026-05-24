@@ -551,6 +551,124 @@ if vista == "Guía de hitos":
 # Toda la lógica vive en mapa.py para mantener este orquestador limpio.
 # ═════════════════════════════════════════════════════════════════════════════
 if vista == "Mapa":
+    # CSS del modo "full-viewport" inyectado AQUÍ antes de cualquier
+    # otra cosa (incluyendo render_mapa). Tres objetivos:
+    #   1. ELIMINAR el padding-top que reserva Streamlit para su header
+    #      (incluso si ocultamos el header con display:none, el padding
+    #      del wrapper sigue ocupando ~80px = la "barra" oscura arriba).
+    #   2. NEUTRALIZAR transforms/contain en los ancestros que romperían
+    #      position:fixed del iframe (rendering quirk de Streamlit).
+    #   3. Colocar el iframe como capa fija a 100vw × 100vh.
+    st.markdown("""
+    <style>
+    /* (1) Fondo oscuro en TODO ancestro + sin overflow ni padding-top */
+    html, body { margin:0 !important; padding:0 !important;
+                 width:100% !important; height:100% !important;
+                 background:#0b1220 !important; overflow:hidden !important; }
+    [data-testid="stApp"] {
+        background:#0b1220 !important;
+        height:100vh !important; max-height:100vh !important;
+        margin:0 !important; padding:0 !important;
+        overflow:hidden !important;
+    }
+    [data-testid="stAppViewContainer"] {
+        background:#0b1220 !important;
+        height:100vh !important; max-height:100vh !important;
+        margin:0 !important;
+        /* ELIMINA explícitamente el padding-top reservado para el header
+           de Streamlit. Sin este reset, queda una franja oscura arriba
+           porque el wrapper conserva el espacio del header oculto. */
+        padding:0 !important;
+        padding-top:0 !important;
+        top:0 !important; left:0 !important;
+        overflow:hidden !important;
+    }
+    section.main, .stMain, section[class*="stMain"] {
+        background:#0b1220 !important;
+        height:100vh !important; max-height:100vh !important;
+        margin:0 !important; padding:0 !important;
+        padding-top:0 !important;
+        top:0 !important;
+        overflow:hidden !important;
+    }
+    /* (2) Bloquear cualquier transform/contain/will-change que rompa
+       el contexto de position:fixed del iframe. */
+    [data-testid="stApp"],
+    [data-testid="stAppViewContainer"],
+    section.main, .stMain,
+    [data-testid="stAppViewBlockContainer"],
+    [data-testid="stMainBlockContainer"],
+    .block-container {
+        transform:none !important;
+        -webkit-transform:none !important;
+        will-change:auto !important;
+        contain:none !important;
+        filter:none !important;
+        perspective:none !important;
+    }
+
+    /* (3) Header de Streamlit: completamente fuera */
+    header[data-testid="stHeader"],
+    div[data-testid="stHeader"],
+    [data-testid="stAppHeader"],
+    header.stAppHeader, .stAppHeader,
+    [data-testid="stDecoration"],
+    [data-testid="stToolbar"],
+    [data-testid="stStatusWidget"],
+    [data-testid="stDeployButton"],
+    [data-testid="manage-app-button"],
+    [data-testid="stHeaderActionElements"] {
+        display:none !important; height:0 !important;
+        min-height:0 !important; max-height:0 !important;
+        padding:0 !important; margin:0 !important;
+        visibility:hidden !important;
+        position:absolute !important; top:-9999px !important;
+    }
+    /* Toggle del sidebar nativo: visible y por encima del iframe */
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="collapsedControl"] {
+        display:block !important; visibility:visible !important;
+        opacity:1 !important; pointer-events:auto !important;
+        z-index:1000002 !important; top:8px !important;
+    }
+    section[data-testid="stSidebar"] {
+        background:#0f172a !important; z-index:1000001 !important;
+    }
+    /* Block-container y main-block: sin padding, fill vertical */
+    section.main > div.block-container,
+    div[data-testid="stAppViewBlockContainer"],
+    div[data-testid="stMainBlockContainer"],
+    .block-container {
+        padding:0 !important; margin:0 !important;
+        max-width:100% !important; width:100% !important;
+        height:100vh !important; max-height:100vh !important;
+        overflow:hidden !important;
+        background:#0b1220 !important;
+    }
+    /* IFRAME: position:fixed total = SIEMPRE 100vw × 100vh del viewport */
+    div[data-testid="stIFrame"] {
+        position:fixed !important;
+        top:0 !important; left:0 !important;
+        right:0 !important; bottom:0 !important;
+        width:100vw !important; height:100vh !important;
+        z-index:1 !important;
+        margin:0 !important; padding:0 !important;
+        overflow:hidden !important; background:#0b1220 !important;
+    }
+    div[data-testid="stIFrame"] iframe,
+    iframe[title^="streamlit_app.components"],
+    iframe[title*="components.v1.html"] {
+        position:absolute !important;
+        top:0 !important; left:0 !important;
+        width:100% !important; height:100% !important;
+        min-width:100% !important; min-height:100% !important;
+        max-width:100% !important; max-height:100% !important;
+        border:0 !important; margin:0 !important; padding:0 !important;
+        display:block !important; background:#0b1220 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     from mapa import render_mapa
     render_mapa(df_f, df_descent_hitos, df_municipios)
     st.stop()

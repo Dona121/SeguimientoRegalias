@@ -386,57 +386,26 @@ def render_mapa(df_depto, df_descent, df_municipios):
     #      cambiar de vista o subir un archivo.
     #   3) Bloquear el scroll vertical de la página — el mapa queda fijo
     #      ocupando el viewport, sin barras de scroll en el contenedor padre.
+    # CSS de la vista Mapa.
+    # Estrategia: en lugar de pelear con Streamlit por la altura del iframe,
+    # lo sacamos del flujo del documento con position:fixed e inset:0. Así
+    # el iframe SIEMPRE ocupa 100vw × 100vh del viewport del navegador,
+    # responsive automático al zoom in/out, sin franjas blancas posibles.
+    # (Casi todo este CSS también se inyecta desde app.py ANTES de render_mapa
+    #  para evitar el flash del header de Streamlit; se duplica aquí por si
+    #  alguien llama render_mapa directo.)
     st.markdown("""
     <style>
-    /* — Bloquear scroll vertical del documento en la vista Mapa — */
-    html, body, [data-testid="stAppViewContainer"] {
-        overflow: hidden !important;
-        height: 100vh !important;
-        max-height: 100vh !important;
-    }
+    /* ── Fondo oscuro en TODOS los ancestros (evita franjas blancas) ─── */
+    html, body,
+    [data-testid="stApp"],
+    [data-testid="stAppViewContainer"],
     section.main {
+        background: #0b1220 !important;
         overflow: hidden !important;
-        height: 100vh !important;
-        max-height: 100vh !important;
-    }
-    /* — Romper el contenedor principal y eliminar paddings — */
-    section.main > div.block-container,
-    div[data-testid="stAppViewBlockContainer"],
-    div[data-testid="stMainBlockContainer"],
-    div.main .block-container {
-        padding: 0 !important;
-        margin: 0 !important;
-        max-width: 100% !important;
-        width: 100% !important;
-        height: 100vh !important;
-        max-height: 100vh !important;
-        overflow: hidden !important;
-    }
-    /* — Iframe del componente: usa el 100% del contenedor padre, no del
-       viewport completo, para que si el usuario abre el sidebar nativo de
-       Streamlit el iframe se reduzca y no quede empujado fuera de pantalla. — */
-    section.main iframe,
-    div[data-testid="stIFrame"] iframe,
-    iframe[title="streamlit_app.components.v1.html.html"] {
-        width: 100% !important;
-        min-width: 100% !important;
-        height: 100vh !important;
-        min-height: 100vh !important;
-        margin: 0 !important;
-        border: 0 !important;
-        display: block !important;
-    }
-    /* — Fondo del main: dark style para que el mapa ocupe toda el área visible — */
-    section.main { background: #0b1220 !important; padding-top: 0 !important; }
-    /* Sidebar nativo: si el usuario lo deja abierto, fondo oscuro para combinar con el visor */
-    section[data-testid="stSidebar"] {
-        background: #0f172a !important;
     }
 
-    /* ── SOLO en la vista Mapa: ocultar el panel superior de Streamlit
-          (barra blanca con "Deploy", 3 puntos, decoración). Esto se inyecta
-          únicamente cuando se llama render_mapa(); las demás vistas conservan
-          el header nativo de Streamlit. ── */
+    /* ── Ocultar el header/toolbar de Streamlit en esta vista ────────── */
     header[data-testid="stHeader"],
     div[data-testid="stHeader"],
     [data-testid="stAppHeader"],
@@ -453,14 +422,60 @@ def render_mapa(df_depto, df_descent, df_municipios):
         min-height: 0 !important;
         visibility: hidden !important;
     }
-    /* El control flotante para reabrir el sidebar SÍ debe seguir visible */
+
+    /* Toggle para reabrir el sidebar nativo: SIEMPRE visible y encima del iframe */
     [data-testid="stSidebarCollapsedControl"],
     [data-testid="collapsedControl"] {
         display: block !important;
         visibility: visible !important;
         opacity: 1 !important;
         pointer-events: auto !important;
-        z-index: 1000000 !important;
+        z-index: 1000002 !important;
+    }
+    /* Sidebar nativo: oscuro y por encima del iframe cuando se abre */
+    section[data-testid="stSidebar"] {
+        background: #0f172a !important;
+        z-index: 1000001 !important;
+    }
+
+    /* ── Block-container sin padding ni márgenes ────────────────────── */
+    section.main > div.block-container,
+    div[data-testid="stAppViewBlockContainer"],
+    div[data-testid="stMainBlockContainer"] {
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        height: 100vh !important;
+        overflow: hidden !important;
+        background: #0b1220 !important;
+    }
+
+    /* ── EL IFRAME: position:fixed total = full viewport siempre ────── */
+    /* Se aplica al wrapper que Streamlit pone alrededor del iframe... */
+    div[data-testid="stIFrame"] {
+        position: fixed !important;
+        top: 0 !important; left: 0 !important;
+        right: 0 !important; bottom: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        z-index: 1 !important;
+        margin: 0 !important; padding: 0 !important;
+        overflow: hidden !important;
+        background: #0b1220 !important;
+    }
+    /* ... y al iframe en sí, para que ocupe el 100% de ese wrapper. */
+    div[data-testid="stIFrame"] iframe,
+    iframe[title^="streamlit_app.components"],
+    iframe[title*="components.v1.html"] {
+        width: 100% !important;
+        height: 100% !important;
+        min-width: 100% !important; min-height: 100% !important;
+        max-width: 100% !important; max-height: 100% !important;
+        border: 0 !important;
+        margin: 0 !important; padding: 0 !important;
+        display: block !important;
+        background: #0b1220 !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -620,18 +635,24 @@ _TEMPLATE_HTML = r"""
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  html, body { margin:0; padding:0; height:100%; font-family: 'Montserrat', sans-serif;
+  html, body { margin:0; padding:0; width:100%; height:100%; font-family: 'Montserrat', sans-serif;
                background:#0b1220; color:#e5e7eb; overflow: hidden;
                -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-  .layout { display:flex; height:100vh; min-height: 820px; }
+  /* Layout: usa 100% del iframe (NO min-height fijo). Antes tenía
+     min-height: 820px que en zoom out provocaba desbordamiento — el .main
+     se extendía debajo del área visible y la leyenda (position:absolute con
+     bottom:16px) quedaba fuera del viewport. */
+  .layout { display:flex; width:100%; height:100%; min-height:0; }
 
   /* ── SIDEBAR ──────────────────────────────────────────────────────── */
   .sidebar {
     width: 290px; min-width:290px; background:#0f172a; border-right:1px solid #1e293b;
     display:flex; flex-direction:column;
-    /* Scroll vertical garantizado: limita la altura al viewport y permite
-       que el contenido (Resumen + Estados) sea accesible por scroll. */
-    height: 100vh; max-height: 100vh;
+    /* Scroll vertical garantizado: la altura sigue al iframe (100% del padre,
+       no 100vh — esto evita peleas con cambios de zoom). El overflow:auto
+       deja que el contenido (Resumen + Estados) sea accesible por scroll
+       sin recortar nada cuando el viewport es pequeño. */
+    height: 100%; max-height: 100%;
     overflow-y: auto !important; overflow-x: hidden;
     scrollbar-width: thin;
     scrollbar-color: #334155 #0b1220;
@@ -642,38 +663,38 @@ _TEMPLATE_HTML = r"""
   .sidebar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
   .sidebar::-webkit-scrollbar-thumb:hover { background: #475569; }
   .side-header {
-    padding: 18px 18px 16px; border-bottom: 1px solid #1e293b;
-    display:flex; gap:12px; align-items:center;
+    padding: 12px 16px 12px; border-bottom: 1px solid #1e293b;
+    display:flex; gap:10px; align-items:center;
   }
   .side-logo {
-    width: 38px; height: 38px; border-radius:10px;
+    width: 32px; height: 32px; border-radius:8px;
     background: linear-gradient(135deg, #2563eb, #06b6d4);
     display:flex; align-items:center; justify-content:center; flex-shrink:0;
-    font-weight:800; color:#fff; font-size:1.1rem;
+    font-weight:800; color:#fff; font-size:0.95rem;
   }
-  .side-title { font-size:0.95rem; font-weight:700; color:#fff; line-height:1.15; }
-  .side-sub   { font-size:0.7rem;  color:#94a3b8; line-height:1.3; margin-top:2px; }
+  .side-title { font-size:0.88rem; font-weight:700; color:#fff; line-height:1.15; }
+  .side-sub   { font-size:0.65rem; color:#94a3b8; line-height:1.3; margin-top:2px; }
 
   .side-section-title {
-    text-transform: uppercase; font-size:0.65rem; letter-spacing: 1.1px;
-    color:#60a5fa; font-weight:700; padding: 14px 18px 6px;
+    text-transform: uppercase; font-size:0.6rem; letter-spacing: 1.0px;
+    color:#60a5fa; font-weight:700; padding: 10px 16px 5px;
   }
-  .side-search-wrap { padding: 0 18px 12px; }
+  .side-search-wrap { padding: 0 16px 8px; }
   .side-search {
     width: 100%; box-sizing: border-box;
     background:#0b1220; border:1px solid #1e293b;
-    color:#e5e7eb; padding: 8px 10px; border-radius:8px;
-    font-size:0.78rem; outline:none;
+    color:#e5e7eb; padding: 6px 9px; border-radius:7px;
+    font-size:0.74rem; outline:none;
   }
   .side-search:focus { border-color:#3b82f6; }
   .filtro-wrap { position: relative; box-sizing: border-box; width: 100%; }
   .filtro-wrap, .filtro-wrap * { box-sizing: border-box; }
 
-  .side-filters { padding: 0 18px 4px; display:flex; flex-direction:column; gap:8px; }
+  .side-filters { padding: 0 16px 4px; display:flex; flex-direction:column; gap:6px; }
   .side-select {
     width:100%; box-sizing: border-box;
     background:#0b1220; border:1px solid #1e293b; color:#e5e7eb;
-    padding: 8px 10px; border-radius:8px; font-size:0.78rem; outline:none;
+    padding: 6px 9px; border-radius:7px; font-size:0.74rem; outline:none;
     appearance: none;
     text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
   }
@@ -713,18 +734,18 @@ _TEMPLATE_HTML = r"""
 
   /* — Bloque destacado del filtro de Impacto — */
   .impacto-block {
-    margin: 4px 18px 6px;
-    padding: 10px 12px 12px;
+    margin: 4px 16px 4px;
+    padding: 7px 10px 9px;
     background: linear-gradient(135deg, rgba(96,165,250,0.10), rgba(6,182,212,0.05));
     border: 1px solid rgba(96,165,250,0.35);
     border-left: 3px solid #60a5fa;
-    border-radius: 10px;
+    border-radius: 9px;
     box-shadow: 0 0 0 1px rgba(96,165,250,0.08), 0 4px 12px rgba(15,23,42,0.55);
   }
   .impacto-label {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 0.62rem; text-transform: uppercase; letter-spacing: 1.2px;
-    color: #93c5fd; font-weight: 800; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 7px;
+    font-size: 0.58rem; text-transform: uppercase; letter-spacing: 1.0px;
+    color: #93c5fd; font-weight: 800; margin-bottom: 5px;
   }
   .pulse-dot {
     width: 8px; height: 8px; border-radius: 50%;
@@ -750,34 +771,36 @@ _TEMPLATE_HTML = r"""
   }
 
   .resumen-grid {
-    padding: 4px 18px 18px;
-    display:grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    padding: 2px 16px 10px;
+    display:grid; grid-template-columns: 1fr 1fr; gap: 6px;
   }
   .res-card {
-    background:#0b1220; border:1px solid #1e293b; border-radius:10px;
-    padding: 9px 10px; display:flex; gap:8px; align-items:center;
+    background:#0b1220; border:1px solid #1e293b; border-radius:8px;
+    padding: 6px 8px; display:flex; gap:7px; align-items:center;
     min-width: 0; overflow: hidden;
   }
   .res-card > div:nth-child(2) {
     min-width: 0; flex: 1 1 auto;
   }
   .res-icon {
-    width:28px; height:28px; border-radius:8px;
+    width:24px; height:24px; border-radius:6px;
     display:flex; align-items:center; justify-content:center;
-    font-weight:800; color:#fff; flex-shrink:0; font-size:0.85rem;
+    font-weight:800; color:#fff; flex-shrink:0; font-size:0.75rem;
   }
   .res-num {
-    font-size:0.95rem; font-weight:800; color:#fff; line-height:1.1;
+    font-size:0.85rem; font-weight:800; color:#fff; line-height:1.1;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .res-lbl {
-    font-size:0.58rem; color:#94a3b8; margin-top:3px;
-    text-transform:uppercase; letter-spacing:0.5px; line-height:1.2;
+    font-size:0.54rem; color:#94a3b8; margin-top:2px;
+    text-transform:uppercase; letter-spacing:0.4px; line-height:1.15;
     overflow: hidden; word-break: break-word;
   }
 
   /* ── MAPA ─────────────────────────────────────────────────────────── */
-  .main { flex:1; position:relative; }
+  /* min-height:0 indispensable en flex-children para que respeten el
+     contenedor padre sin desbordarse (importante en zoom out). */
+  .main { flex:1; position:relative; height:100%; min-height:0; overflow:hidden; }
   #map { width:100%; height:100%; background:#0b1220; }
 
   /* — Capa GeoJSON de municipios — */
@@ -807,7 +830,15 @@ _TEMPLATE_HTML = r"""
     border:1px solid #1e293b; border-radius:12px; padding: 12px 14px;
     box-shadow: 0 8px 28px rgba(0,0,0,0.5);
     backdrop-filter: blur(6px);
+    /* Tope de alto: deja espacio reservado para la leyenda inferior. */
+    max-height: calc(100% - 220px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: #334155 #0b1220;
   }
+  .info-panel::-webkit-scrollbar { width: 6px; }
+  .info-panel::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
   .info-title {
     font-size:0.68rem; text-transform:uppercase; color:#60a5fa;
     letter-spacing:1.1px; font-weight:700; margin-bottom:10px;
@@ -839,13 +870,25 @@ _TEMPLATE_HTML = r"""
     background: rgba(15,23,42,0.92); border:1px solid #1e293b; border-radius:12px;
     padding: 12px 14px; box-shadow: 0 8px 28px rgba(0,0,0,0.5);
     backdrop-filter: blur(6px);
+    /* Tope de alto: nunca pasa el 40% del .main para no chocar con el
+       info-panel (arriba a la derecha) ni desbordar si el iframe queda
+       pequeño en pantallas comprimidas. */
+    max-height: calc(100% - 220px);
+    max-width: 240px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: #334155 #0b1220;
   }
+  .leyenda::-webkit-scrollbar { width: 6px; }
+  .leyenda::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
   .leyenda-title {
     font-size:0.68rem; text-transform:uppercase; color:#60a5fa;
     letter-spacing:1.1px; font-weight:700; margin-bottom:8px;
+    position: sticky; top: 0; background: rgba(15,23,42,0.92);
   }
   .ley-row { display:flex; align-items:center; gap:8px; font-size:0.75rem; margin: 3px 0; color:#cbd5e1; }
-  .ley-dot { width:10px; height:10px; border-radius:50%; }
+  .ley-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
 
   /* ── MARCADORES PERSONALIZADOS ───────────────────────────────────── */
   .mun-marker {
@@ -897,13 +940,13 @@ _TEMPLATE_HTML = r"""
 
   /* Filtros chips inferior del sidebar */
   .estados-mini {
-    padding: 0 18px 14px;
-    display:flex; flex-wrap: wrap; gap: 6px;
+    padding: 0 16px 10px;
+    display:flex; flex-wrap: wrap; gap: 5px;
   }
   .estado-chip {
-    font-size:0.62rem; padding:4px 8px; border-radius:12px;
+    font-size:0.58rem; padding:3px 7px; border-radius:11px;
     background:#0b1220; border:1px solid #1e293b; color:#cbd5e1;
-    display:inline-flex; align-items:center; gap:5px; cursor:default;
+    display:inline-flex; align-items:center; gap:4px; cursor:default;
     max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .estado-chip .dot { width:7px; height:7px; border-radius:50%; flex-shrink: 0; }
@@ -914,11 +957,45 @@ _TEMPLATE_HTML = r"""
   }
 
   .footer-note {
-    margin-top:auto; padding: 10px 18px 14px;
-    font-size:0.64rem; color:#475569; border-top: 1px solid #1e293b;
+    margin-top:auto; padding: 8px 16px 10px;
+    font-size:0.58rem; color:#475569; border-top: 1px solid #1e293b;
     word-wrap: break-word; overflow-wrap: break-word;
   }
   .footer-note strong { color: #94a3b8; }
+
+  /* ── RESPONSIVE: alturas pequeñas (laptop, zoom in) ────────────────
+     Cuando el viewport es bajito, el sidebar tiene demasiado contenido
+     vertical. Compactamos aún más los espacios para reducir la necesidad
+     de scroll y permitir que los Estados queden visibles sin moverse. */
+  @media (max-height: 800px) {
+    .side-header { padding: 9px 14px; gap: 8px; }
+    .side-logo { width: 28px; height: 28px; font-size: 0.85rem; }
+    .side-title { font-size: 0.82rem; }
+    .side-sub { font-size: 0.6rem; }
+    .side-section-title { padding: 7px 14px 3px; font-size: 0.55rem; }
+    .side-search-wrap { padding: 0 14px 5px; }
+    .side-filters { padding: 0 14px 2px; gap: 4px; }
+    .side-search, .side-select { padding: 5px 8px; font-size: 0.7rem; }
+    .impacto-block { margin: 2px 14px 2px; padding: 5px 8px 7px; }
+    .resumen-grid { padding: 2px 14px 6px; gap: 4px; }
+    .res-card { padding: 4px 6px; gap: 5px; }
+    .res-icon { width: 20px; height: 20px; font-size: 0.65rem; }
+    .res-num { font-size: 0.75rem; }
+    .res-lbl { font-size: 0.5rem; }
+    .estados-mini { padding: 0 14px 6px; gap: 4px; }
+    .estado-chip { font-size: 0.55rem; padding: 2px 6px; }
+    .footer-note { padding: 5px 14px 7px; font-size: 0.55rem; }
+  }
+  @media (max-height: 650px) {
+    /* En alturas MUY pequeñas, ocultar el footer-note y compactar más */
+    .footer-note { display: none; }
+    .side-header { padding: 7px 12px; }
+    .side-logo { width: 24px; height: 24px; font-size: 0.75rem; }
+    .resumen-grid { grid-template-columns: 1fr 1fr 1fr 1fr; }
+    .res-card { flex-direction: column; align-items: flex-start; gap: 2px; }
+    .res-icon { width: 18px; height: 18px; }
+    .res-lbl { font-size: 0.45rem; line-height: 1.05; }
+  }
 </style>
 </head>
 <body>
@@ -1073,36 +1150,42 @@ _TEMPLATE_HTML = r"""
 <script>
 const PAYLOAD = __PAYLOAD__;
 
-// ── Ajustar altura del iframe al viewport del usuario ──────────────────────
-// Streamlit fija el iframe a un alto preasignado (en components.html height=...),
-// pero el viewport real del usuario puede ser distinto. Sin ajuste, el sidebar
-// se corta y queda con "Estados" sin scroll alcanzable. Usamos postMessage
-// para pedirle a Streamlit que redimensione el iframe al alto real disponible.
-function ajustarAlturaIframe() {
-  try {
-    const altoReal = (window.parent && window.parent.innerHeight)
-                     ? window.parent.innerHeight
-                     : window.innerHeight;
-    // Resta un pequeño margen para el header de Streamlit que pueda quedar
-    const target = Math.max(600, altoReal - 10);
-    document.body.style.height = target + 'px';
-    document.documentElement.style.height = target + 'px';
-    const layout = document.querySelector('.layout');
-    if (layout) {
-      layout.style.height = target + 'px';
-      layout.style.minHeight = '0';
-    }
-    // Mensaje estándar de Streamlit-components para redimensionar el iframe
-    window.parent.postMessage({
-      type: 'streamlit:setFrameHeight',
-      height: target
-    }, '*');
-  } catch (e) { /* ignore */ }
-}
-ajustarAlturaIframe();
-window.addEventListener('resize', ajustarAlturaIframe);
-setTimeout(ajustarAlturaIframe, 200);
-setTimeout(ajustarAlturaIframe, 1000);
+// ── Sincronizar la altura del iframe con el viewport real ──────────────────
+// Streamlit por defecto fija el iframe del componente a la altura pasada en
+// `components.html(height=...)` (en nuestro caso 850px). Si el viewport del
+// usuario es más chico (700px en zoom in / portátiles), el iframe queda más
+// alto que la pantalla y todo lo que esté en `bottom:16px` (leyenda) cae
+// fuera del área visible.
+//
+// La solución bidireccional: mientras el CSS `position:fixed; height:100vh`
+// fuerza al wrapper a ocupar el viewport, este JS le dice al frontend de
+// Streamlit que también ponga el iframe a esa altura, vía el mensaje
+// estándar `streamlit:setFrameHeight`. CSS y JS se refuerzan mutuamente —
+// si uno falla, el otro cubre.
+(function() {
+  var ultimaAltura = 0;
+  function sincronizarAltura() {
+    try {
+      var pH = (window.parent && window.parent.innerHeight) || window.innerHeight;
+      if (pH && Math.abs(pH - ultimaAltura) > 2) {
+        ultimaAltura = pH;
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({
+            type: 'streamlit:setFrameHeight',
+            height: pH
+          }, '*');
+        }
+        document.documentElement.style.height = pH + 'px';
+        document.body.style.height = pH + 'px';
+      }
+    } catch (e) { /* cross-origin u otro; el CSS position:fixed compensa */ }
+  }
+  sincronizarAltura();
+  window.addEventListener('resize', sincronizarAltura);
+  // Polling lento: el zoom del navegador no siempre dispara 'resize' en
+  // todos los OS/navegadores; este interval lo cubre.
+  setInterval(sincronizarAltura, 600);
+})();
 
 // ── Setup mapa con tile oscura ─────────────────────────────────────────────
 const map = L.map('map', { zoomControl: true, attributionControl: false })
