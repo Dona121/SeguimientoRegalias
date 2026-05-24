@@ -426,12 +426,17 @@ def render_mapa(df_depto, df_descent, df_municipios):
         border: 0 !important;
         display: block !important;
     }
-    /* — Fondo del main y header transparentes (estilo dark) — */
+    /* — Fondo del main: dark style para que el mapa ocupe toda el área visible — */
     section.main { background: #0b1220 !important; padding-top: 0 !important; }
-    /* Ocultar por completo TODA variante de header/toolbar de Streamlit:
-       la barra gris que aparecía arriba en el primer render. Cubrimos los
-       distintos data-testid usados en versiones recientes (stHeader,
-       stAppHeader) y la decoración superior. */
+    /* Sidebar nativo: si el usuario lo deja abierto, fondo oscuro para combinar con el visor */
+    section[data-testid="stSidebar"] {
+        background: #0f172a !important;
+    }
+
+    /* ── SOLO en la vista Mapa: ocultar el panel superior de Streamlit
+          (barra blanca con "Deploy", 3 puntos, decoración). Esto se inyecta
+          únicamente cuando se llama render_mapa(); las demás vistas conservan
+          el header nativo de Streamlit. ── */
     header[data-testid="stHeader"],
     div[data-testid="stHeader"],
     [data-testid="stAppHeader"],
@@ -440,98 +445,24 @@ def render_mapa(df_depto, df_descent, df_municipios):
     [data-testid="stDecoration"],
     [data-testid="stToolbar"],
     [data-testid="stStatusWidget"],
-    [data-testid="stConnectionStatus"],
-    #MainMenu {
+    [data-testid="stDeployButton"],
+    [data-testid="manage-app-button"],
+    [data-testid="stHeaderActionElements"] {
         display: none !important;
         height: 0 !important;
         min-height: 0 !important;
-        max-height: 0 !important;
         visibility: hidden !important;
-        opacity: 0 !important;
-        pointer-events: none !important;
     }
-    /* El control flotante para reabrir el sidebar SÍ debe seguir clickeable,
-       aunque vivimos junto al header. Lo extraemos como overlay propio. */
-    [data-testid="stSidebarCollapsedControl"] {
+    /* El control flotante para reabrir el sidebar SÍ debe seguir visible */
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="collapsedControl"] {
         display: block !important;
         visibility: visible !important;
         opacity: 1 !important;
         pointer-events: auto !important;
-        height: auto !important;
         z-index: 1000000 !important;
     }
-    /* Sidebar nativo: NO lo forzamos colapsado — Streamlit lo maneja con el
-       botón « del usuario. Solo le damos un fondo oscuro para que combine
-       con el visor en caso de que el usuario lo deje abierto. */
-    section[data-testid="stSidebar"] {
-        background: #0f172a !important;
-    }
-    /* Botón de toggle « con buen contraste sobre el mapa oscuro */
-    button[kind="header"], [data-testid="stSidebarCollapsedControl"] button {
-        color: #fff !important;
-        background: rgba(15, 23, 42, 0.85) !important;
-        border-radius: 8px;
-    }
     </style>
-    <script>
-    /* Estrategia anti-barra-gris en 3 capas:
-       1) Ocultar todos los selectores conocidos de Streamlit (display:none).
-       2) Ocultar TODOS los <header> del documento (más amplio).
-       3) Capa oscura fija en el tope que pinta por encima de lo que pueda
-          quedar visible. Se inserta vía JS para garantizar que esté
-          presente desde el primer paint. */
-    (function() {
-        const SELECTORES = [
-            'header[data-testid="stHeader"]',
-            'div[data-testid="stHeader"]',
-            '[data-testid="stAppHeader"]',
-            'header.stAppHeader',
-            '[data-testid="stDecoration"]',
-            '[data-testid="stToolbar"]',
-            '[data-testid="stStatusWidget"]',
-            '[data-testid="stConnectionStatus"]',
-            '[data-testid="stHeaderActionElements"]',
-            '#MainMenu'
-        ];
-        function ocultar() {
-            // Selectores específicos
-            SELECTORES.forEach(sel => {
-                document.querySelectorAll(sel).forEach(el => {
-                    el.style.display    = 'none';
-                    el.style.height     = '0';
-                    el.style.minHeight  = '0';
-                    el.style.visibility = 'hidden';
-                });
-            });
-            // Cualquier <header> del documento (excepto los nuestros)
-            document.querySelectorAll('header').forEach(el => {
-                if (el.closest('.layout, .leaflet-control-container')) return;
-                el.style.display = 'none';
-            });
-            // Asegurar el overlay oscuro
-            if (!document.getElementById('seg-top-cover')) {
-                const cover = document.createElement('div');
-                cover.id = 'seg-top-cover';
-                cover.style.cssText = `
-                    position: fixed; top: 0; left: 0; right: 0;
-                    height: 64px; background: #0b1220;
-                    z-index: 999990; pointer-events: none;
-                    border: 0;
-                `;
-                document.body.appendChild(cover);
-            }
-        }
-        ocultar();
-        const obs = new MutationObserver(ocultar);
-        obs.observe(document.body || document.documentElement, {
-            childList: true, subtree: true
-        });
-        setTimeout(ocultar,  50);
-        setTimeout(ocultar, 200);
-        setTimeout(ocultar, 800);
-        setTimeout(ocultar, 2000);
-    })();
-    </script>
     """, unsafe_allow_html=True)
 
     # 1) Recolectar proyectos
@@ -567,20 +498,38 @@ def render_mapa(df_depto, df_descent, df_municipios):
         )
         return
 
-    # 2) Métricas globales
-    total_proy = sum(len(g["proyectos"]) for g in grupos.values()) + len(no_geo)
-    total_munic = len(grupos)
-    # Avances promedio (omitiendo nulos)
+    # 2) Métricas globales — DEDUPLICADAS por BPIN
+    # Un proyecto puede aparecer en N municipios (p. ej., los que tienen
+    # impacto departamental cubren los 26 municipios de Sucre). Para que los
+    # KPIs muestren la cantidad REAL de proyectos únicos, agrupamos por BPIN.
+    # OJO: los conteos por municipio en los marcadores SÍ se mantienen como
+    # apariciones (un proyecto departamental cuenta en cada municipio).
+    proyectos_unicos = {}  # bpin -> proyecto (toma la primera ocurrencia)
+    for g in grupos.values():
+        for p in g["proyectos"]:
+            bpin = p.get("bpin") or ""
+            if bpin and bpin not in proyectos_unicos:
+                proyectos_unicos[bpin] = p
+    for _muni, p in no_geo:   # no_geo = lista de tuplas (municipio, proyecto)
+        bpin = p.get("bpin") or ""
+        if bpin and bpin not in proyectos_unicos:
+            proyectos_unicos[bpin] = p
+
+    total_proy   = len(proyectos_unicos)            # ← cantidad ÚNICA
+    total_munic  = len(grupos)
+    # Total de apariciones (suma cruda) — útil para "Información clave"
+    total_apariciones = sum(len(g["proyectos"]) for g in grupos.values()) + len(no_geo)
+
+    # Avances promedio y conteos por estado/sector — sobre proyectos únicos
     avances_f, avances_fin = [], []
     estados_count = {}
     sectores_count = {}
-    for g in grupos.values():
-        for p in g["proyectos"]:
-            if p["avance_fisico"]     is not None: avances_f.append(p["avance_fisico"])
-            if p["avance_financiero"] is not None: avances_fin.append(p["avance_financiero"])
-            estados_count[p["estado"]] = estados_count.get(p["estado"], 0) + 1
-            if p["sector"]:
-                sectores_count[p["sector"]] = sectores_count.get(p["sector"], 0) + 1
+    for p in proyectos_unicos.values():
+        if p["avance_fisico"]     is not None: avances_f.append(p["avance_fisico"])
+        if p["avance_financiero"] is not None: avances_fin.append(p["avance_financiero"])
+        estados_count[p["estado"]] = estados_count.get(p["estado"], 0) + 1
+        if p["sector"]:
+            sectores_count[p["sector"]] = sectores_count.get(p["sector"], 0) + 1
     av_f_prom   = round(sum(avances_f)/len(avances_f), 1) if avances_f else None
     av_fin_prom = round(sum(avances_fin)/len(avances_fin), 1) if avances_fin else None
 
@@ -611,6 +560,7 @@ def render_mapa(df_depto, df_descent, df_municipios):
         "default":     COLOR_DEFAULT,
         "fuentes":     FUENTES_LABEL,
         "total_proy":  total_proy,
+        "total_apariciones": total_apariciones,
         "total_munic": total_munic,
         "avance_fisico_prom":     av_f_prom,
         "avance_financiero_prom": av_fin_prom,
@@ -627,10 +577,12 @@ def render_mapa(df_depto, df_descent, df_municipios):
                                separators=(",", ":"))
     componente_html = _construir_componente_html(payload_json, geojson_json)
 
-    # Altura fija grande para que la CSS de 100vh dentro del iframe llene
-    # bien la pantalla en cualquier monitor. El CSS externo limita el
-    # contenedor de Streamlit a 100vh, así que no hay scroll vertical.
-    components.html(componente_html, height=1200, scrolling=False)
+    # Altura ajustada al viewport típico de laptop (~900px). Un valor mayor
+    # haría que la parte inferior del sidebar (con la sección "Estados") quede
+    # fuera del área visible y, como el contenedor padre tiene overflow:hidden,
+    # el usuario no podría hacer scroll. Con 850 el sidebar interno
+    # (overflow-y:auto) puede scrollear su contenido cómodamente.
+    components.html(componente_html, height=850, scrolling=False)
 
 
 def _construir_componente_html(payload_json: str, geojson_json: str) -> str:
@@ -677,9 +629,18 @@ _TEMPLATE_HTML = r"""
   .sidebar {
     width: 290px; min-width:290px; background:#0f172a; border-right:1px solid #1e293b;
     display:flex; flex-direction:column;
-    overflow-y: auto; overflow-x: hidden;
+    /* Scroll vertical garantizado: limita la altura al viewport y permite
+       que el contenido (Resumen + Estados) sea accesible por scroll. */
+    height: 100vh; max-height: 100vh;
+    overflow-y: auto !important; overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: #334155 #0b1220;
   }
-  .sidebar > * { min-width: 0; }  /* permite a los hijos no overflowear */
+  .sidebar > * { min-width: 0; flex-shrink: 0; }  /* hijos no se comprimen, scroll funciona */
+  /* Scrollbar visible y notorio en el sidebar para que el usuario sepa que hay más contenido */
+  .sidebar::-webkit-scrollbar { width: 8px; }
+  .sidebar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+  .sidebar::-webkit-scrollbar-thumb:hover { background: #475569; }
   .side-header {
     padding: 18px 18px 16px; border-bottom: 1px solid #1e293b;
     display:flex; gap:12px; align-items:center;
@@ -861,6 +822,17 @@ _TEMPLATE_HTML = r"""
   }
   .info-row .info-val { font-size:0.95rem; font-weight:800; color:#fff; line-height:1; }
   .info-row .info-lbl { font-size:0.66rem; color:#94a3b8; margin-top:3px; }
+  .info-nota {
+    display:none;
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: rgba(96,165,250,0.08);
+    border-left: 2px solid #60a5fa;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    color: #cbd5e1;
+    line-height: 1.4;
+  }
 
   .leyenda {
     position:absolute; bottom: 16px; right: 16px; z-index: 600;
@@ -1085,6 +1057,7 @@ _TEMPLATE_HTML = r"""
           <div class="info-lbl">Proyectos suspendidos</div>
         </div>
       </div>
+      <div id="i-nota" class="info-nota"></div>
     </div>
 
     <div class="leyenda">
@@ -1099,6 +1072,37 @@ _TEMPLATE_HTML = r"""
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script>
 const PAYLOAD = __PAYLOAD__;
+
+// ── Ajustar altura del iframe al viewport del usuario ──────────────────────
+// Streamlit fija el iframe a un alto preasignado (en components.html height=...),
+// pero el viewport real del usuario puede ser distinto. Sin ajuste, el sidebar
+// se corta y queda con "Estados" sin scroll alcanzable. Usamos postMessage
+// para pedirle a Streamlit que redimensione el iframe al alto real disponible.
+function ajustarAlturaIframe() {
+  try {
+    const altoReal = (window.parent && window.parent.innerHeight)
+                     ? window.parent.innerHeight
+                     : window.innerHeight;
+    // Resta un pequeño margen para el header de Streamlit que pueda quedar
+    const target = Math.max(600, altoReal - 10);
+    document.body.style.height = target + 'px';
+    document.documentElement.style.height = target + 'px';
+    const layout = document.querySelector('.layout');
+    if (layout) {
+      layout.style.height = target + 'px';
+      layout.style.minHeight = '0';
+    }
+    // Mensaje estándar de Streamlit-components para redimensionar el iframe
+    window.parent.postMessage({
+      type: 'streamlit:setFrameHeight',
+      height: target
+    }, '*');
+  } catch (e) { /* ignore */ }
+}
+ajustarAlturaIframe();
+window.addEventListener('resize', ajustarAlturaIframe);
+setTimeout(ajustarAlturaIframe, 200);
+setTimeout(ajustarAlturaIframe, 1000);
 
 // ── Setup mapa con tile oscura ─────────────────────────────────────────────
 const map = L.map('map', { zoomControl: true, attributionControl: false })
@@ -1273,9 +1277,16 @@ function aplicarFiltros() {
   const im = document.getElementById('f-impacto').value;
 
   const filtrados = [];
-  let total = 0;
+  let apariciones = 0;                  // suma cruda (un proyecto en N munis cuenta N)
   const estCount = {};
-  let avF = [], avFin = [], suspN = 0;
+  // Dedupe por BPIN: KPIs deben mostrar el conteo REAL de proyectos únicos
+  const bpinsUnicos     = new Set();
+  const bpinsConAvF     = new Set();    // para promediar avance físico sin duplicar
+  const bpinsConAvFin   = new Set();
+  let   sumAvF = 0, sumAvFin = 0;
+  let   suspNUnicos = 0;
+  const bpinsSusp = new Set();
+  const bpinsEstado = {};               // estado -> Set(bpin), dedupe por estado
 
   allGrupos.forEach(g => {
     if (mu && g.nombre.toUpperCase() !== mu) return;
@@ -1293,30 +1304,58 @@ function aplicarFiltros() {
     });
     if (proyFilt.length > 0) {
       filtrados.push(Object.assign({}, g, { proyectos: proyFilt }));
-      total += proyFilt.length;
+      apariciones += proyFilt.length;
       proyFilt.forEach(p => {
-        estCount[p.estado] = (estCount[p.estado] || 0) + 1;
-        if (p.avance_fisico     != null) avF.push(p.avance_fisico);
-        if (p.avance_financiero != null) avFin.push(p.avance_financiero);
-        if (p.estado === 'SUSPENDIDO') suspN += 1;
+        const bpin = p.bpin || '';
+        if (bpin && !bpinsUnicos.has(bpin)) {
+          bpinsUnicos.add(bpin);
+          // Avance físico/financiero: solo cuenta la primera ocurrencia
+          if (p.avance_fisico     != null) { sumAvF   += p.avance_fisico;     bpinsConAvF.add(bpin); }
+          if (p.avance_financiero != null) { sumAvFin += p.avance_financiero; bpinsConAvFin.add(bpin); }
+          if (p.estado === 'SUSPENDIDO' && !bpinsSusp.has(bpin)) {
+            bpinsSusp.add(bpin); suspNUnicos += 1;
+          }
+        }
+        // Estado dedup por BPIN: un proyecto cuenta UNA vez por estado
+        if (bpin) {
+          if (!bpinsEstado[p.estado]) bpinsEstado[p.estado] = new Set();
+          bpinsEstado[p.estado].add(bpin);
+        }
       });
     }
   });
 
+  // Convertir bpinsEstado a conteos
+  Object.keys(bpinsEstado).forEach(e => { estCount[e] = bpinsEstado[e].size; });
+
   rebuildMarkers(filtrados);
 
-  // KPIs sidebar
-  document.getElementById('r-total').textContent  = total;
+  const totalUnicos = bpinsUnicos.size;
+  const avFTxt   = bpinsConAvF.size   ? (sumAvF   / bpinsConAvF.size  ).toFixed(1) + '%' : '—';
+  const avFinTxt = bpinsConAvFin.size ? (sumAvFin / bpinsConAvFin.size).toFixed(1) + '%' : '—';
+
+  // KPIs sidebar — siempre números ÚNICOS (no duplicados por municipio)
+  document.getElementById('r-total').textContent  = totalUnicos;
   document.getElementById('r-munic').textContent  = filtrados.length;
-  document.getElementById('r-avf').textContent    = avF.length
-    ? (avF.reduce((a,b)=>a+b,0)/avF.length).toFixed(1) + '%' : '—';
-  document.getElementById('r-avfin').textContent  = avFin.length
-    ? (avFin.reduce((a,b)=>a+b,0)/avFin.length).toFixed(1) + '%' : '—';
-  // KPIs panel info
-  document.getElementById('i-avf').textContent    = document.getElementById('r-avf').textContent;
-  document.getElementById('i-avfin').textContent  = document.getElementById('r-avfin').textContent;
+  document.getElementById('r-avf').textContent    = avFTxt;
+  document.getElementById('r-avfin').textContent  = avFinTxt;
+  // KPIs panel "Información clave" — únicos también
+  document.getElementById('i-avf').textContent    = avFTxt;
+  document.getElementById('i-avfin').textContent  = avFinTxt;
   document.getElementById('i-munic').textContent  = filtrados.length;
-  document.getElementById('i-alerta').textContent = suspN;
+  document.getElementById('i-alerta').textContent = suspNUnicos;
+  // Nota de claridad: cuántos proyectos únicos vs apariciones en municipios
+  const notaEl = document.getElementById('i-nota');
+  if (notaEl) {
+    if (apariciones > totalUnicos) {
+      const diff = apariciones - totalUnicos;
+      notaEl.textContent = totalUnicos + ' proyectos únicos · ' + apariciones
+        + ' apariciones (' + diff + ' por cobertura multi-municipio)';
+      notaEl.style.display = 'block';
+    } else {
+      notaEl.style.display = 'none';
+    }
+  }
 
   // Chips de estados
   const cont = document.getElementById('estados-mini');

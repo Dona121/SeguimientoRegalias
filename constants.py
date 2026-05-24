@@ -23,6 +23,39 @@ from openpyxl.utils import get_column_letter
 _log = logging.getLogger(__name__)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Patch del index.html estático de Streamlit
+# ─────────────────────────────────────────────────────────────────────────────
+# El navegador recibe primero el HTML estático que sirve Streamlit, en el cual
+# está hardcodeado `<title>Streamlit</title>`. set_page_config recién actualiza
+# el título por React tras unos ms — por eso a veces la pestaña se queda
+# mostrando "Streamlit" (sobre todo si el navegador cachea el primer título).
+#
+# Para que el título correcto aparezca desde el PRIMER byte que recibe el
+# navegador, parchamos el index.html del paquete streamlit instalado.
+# Es idempotente: solo escribe si encuentra el placeholder original.
+def _patch_streamlit_static_title(nuevo_titulo: str = "Seguimiento Regalías") -> None:
+    try:
+        import os, streamlit as _st
+        idx = os.path.join(os.path.dirname(_st.__file__), "static", "index.html")
+        if not os.path.exists(idx):
+            return
+        with open(idx, "r", encoding="utf-8") as f:
+            html_txt = f.read()
+        nuevo_tag = f"<title>{nuevo_titulo}</title>"
+        if nuevo_tag in html_txt:
+            return  # ya está parchado
+        if "<title>Streamlit</title>" in html_txt:
+            html_txt = html_txt.replace("<title>Streamlit</title>", nuevo_tag)
+            with open(idx, "w", encoding="utf-8") as f:
+                f.write(html_txt)
+    except Exception:
+        # No es crítico — si falla seguimos con set_page_config + JS observer.
+        pass
+
+_patch_streamlit_static_title("Seguimiento Regalías")
+
+
 st.set_page_config(
     page_title="Seguimiento Regalías",
     layout="wide",
@@ -1498,6 +1531,7 @@ def inject_css():
         color: rgba(255,255,255,0.5);
         font-style: italic;
     }}
+
     </style>
     """, unsafe_allow_html=True)
 
@@ -1507,6 +1541,35 @@ def inject_css():
     (function() {
       var doc = window.parent.document;
       var win = window.parent;
+
+      // ── Forzar título de pestaña: "Seguimiento Regalías" ──
+      // set_page_config a veces no basta (la pestaña cachea "Streamlit"
+      // o algún rerun lo sobreescribe). Lo fijamos por JS + observador.
+      var TITLE = 'Seguimiento Regalías';
+      function forzarTitulo() {
+        try {
+          if (doc.title !== TITLE) doc.title = TITLE;
+        } catch (e) { /* ignore */ }
+      }
+      forzarTitulo();
+      // Reaplicarlo en intervalos cortos para vencer cualquier override
+      setTimeout(forzarTitulo,  100);
+      setTimeout(forzarTitulo,  500);
+      setTimeout(forzarTitulo, 1500);
+      setTimeout(forzarTitulo, 3000);
+      // Observar cambios al <title>: si algo lo resetea, lo restauramos.
+      try {
+        var titleEl = doc.querySelector('title');
+        if (titleEl) {
+          new MutationObserver(forzarTitulo)
+            .observe(titleEl, { childList: true, characterData: true, subtree: true });
+        }
+        // También observar el <head> por si alguien REEMPLAZA el <title>.
+        if (doc.head) {
+          new MutationObserver(forzarTitulo)
+            .observe(doc.head, { childList: true, subtree: true });
+        }
+      } catch (e) { /* ignore */ }
 
       // ── Toggle contratos ─────────────────────────────────────────────────
       function initToggleCtto() {
