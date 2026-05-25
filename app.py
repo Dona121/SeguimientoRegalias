@@ -1804,7 +1804,7 @@ if tab_alertas is not None:
 
         n_total_alerta = sum(conteos_global.values())
 
-        # Conteo por entidad
+        # Conteo por entidad + recolección de NOMBRES de proyectos
         filas_entidad = []
         for ent in entidades_reporte:
             df_ent = df_estado.filter(pl.col("ENTIDAD O SECRETARIA") == ent)
@@ -1812,18 +1812,28 @@ if tab_alertas is not None:
                 continue
 
             conteos_ent: dict = {}
+            # Lista de proyectos en alerta para esta entidad (nombre, bpin, alerta).
+            # Permite mostrarle al usuario CUÁLES son los proyectos con alerta.
+            proyectos_alerta = []
             for clasi_col, hito_col, _ in cfg["hitos"]:
                 for alerta in ALERTAS_NRN.get(hito_col, []):
-                    n = int(df_ent.filter(pl.col(clasi_col) == alerta).height)
+                    df_alerta = df_ent.filter(pl.col(clasi_col) == alerta)
+                    n = int(df_alerta.height)
                     if n > 0:
                         conteos_ent[alerta] = conteos_ent.get(alerta, 0) + n
+                        for r in df_alerta.iter_rows(named=True):
+                            proyectos_alerta.append({
+                                "nombre": (r.get("NOMBRE PROYECTO") or "—"),
+                                "bpin":   str(r.get("BPIN") or "—"),
+                                "alerta": alerta,
+                            })
 
             n_ent_alerta = sum(conteos_ent.values())
             if n_ent_alerta == 0:
                 continue
 
             pills = "".join(_pill_alerta(k) for k in sorted(conteos_ent, key=lambda x: conteos_ent[x], reverse=True))
-            filas_entidad.append((ent, df_ent.height, n_ent_alerta, pills, conteos_ent))
+            filas_entidad.append((ent, df_ent.height, n_ent_alerta, pills, conteos_ent, proyectos_alerta))
 
         if not filas_entidad:
             continue
@@ -1832,43 +1842,76 @@ if tab_alertas is not None:
         comentario_global = _comentario_reporte(estado_up, conteos_global, n_total_alerta)
         fg_est, bg_est = cfg["color_est"]
 
-        # Fila de encabezado del estado (agrupa las entidades)
+        # Fila de encabezado del estado — separador prominente entre bloques.
         reporte_rows.append(
-            f'<tr style="background:{bg_est}20">'
-            f'<td colspan="4" style="padding:0.55rem 0.9rem;border-bottom:2px solid {fg_est}30">'
-            f'<span style="font-family:\'Montserrat\',sans-serif;font-size:0.67rem;font-weight:800;'
-            f'text-transform:uppercase;letter-spacing:0.8px;color:{fg_est}">'
+            f'<tr class="rep-estado-row" style="background:{bg_est}25;border-top:2px solid {fg_est}55">'
+            f'<td colspan="4" style="padding:0.5rem 0.85rem;border-bottom:2px solid {fg_est}55">'
+            f'<span style="font-family:\'Montserrat\',sans-serif;font-size:0.68rem;font-weight:800;'
+            f'text-transform:uppercase;letter-spacing:0.9px;color:{fg_est}">'
             f'{cfg["label"]}</span>'
-            f'<span style="font-size:0.7rem;color:{C["muted"]};font-weight:400;margin-left:0.6rem">'
-            f'{n_total_est} proyecto(s) en este estado · {n_total_alerta} con alerta</span>'
+            f'<span style="font-size:0.7rem;color:{C["muted"]};font-weight:500;margin-left:0.7rem">'
+            f'· {n_total_est} proyecto(s) en este estado · {n_total_alerta} con alerta</span>'
             f'</td></tr>'
         )
 
-        for ent, n_ent_total, n_ent_alerta, pills_html, conteos_ent in filas_entidad:
+        # Renderizado de filas de entidad con la lista de proyectos en cada una.
+        # Si una entidad tiene > 5 proyectos en alerta, los demás van dentro de
+        # un <details> colapsable para no inflar la tabla.
+        MAX_INLINE = 5
+        for ent, n_ent_total, n_ent_alerta, pills_html, conteos_ent, proys_alerta in filas_entidad:
             com_ent = _comentario_reporte(estado_up, conteos_ent, n_ent_alerta)
-            reporte_rows.append(f"""<tr>
-                <td style="font-weight:600;font-size:0.81rem;color:{C['azul_oscuro']};
-                    padding:0.65rem 0.9rem;vertical-align:top">
-                    {html.escape(ent)}
+
+            # Construir lista HTML de proyectos
+            def _proy_li(p):
+                _nom  = html.escape((p["nombre"] or "—")[:200])
+                _bpin = html.escape(p["bpin"])
+                _pill = _pill_alerta(p["alerta"])
+                return (
+                    f'<li>'
+                    f'<span class="rep-proy-nombre">{_nom}</span>'
+                    f'<span class="rep-proy-bpin">· {_bpin}</span> '
+                    f'{_pill}'
+                    f'</li>'
+                )
+
+            visibles  = proys_alerta[:MAX_INLINE]
+            ocultos   = proys_alerta[MAX_INLINE:]
+            items_html = "".join(_proy_li(p) for p in visibles)
+            extra_html = ""
+            if ocultos:
+                extra_items = "".join(_proy_li(p) for p in ocultos)
+                extra_html = (
+                    f'<details class="rep-proys-mas">'
+                    f'<summary>+{len(ocultos)} más</summary>'
+                    f'<ul>{extra_items}</ul>'
+                    f'</details>'
+                )
+            proys_html = (
+                f'<div class="rep-proys">'
+                f'<div class="rep-proys-titulo">Proyectos con alerta</div>'
+                f'<ul>{items_html}</ul>'
+                f'{extra_html}'
+                f'</div>'
+            ) if proys_alerta else ""
+
+            reporte_rows.append(f"""<tr class="rep-data-row">
+                <td class="rep-cell rep-dep-cell">
+                    <div class="rep-dep">{html.escape(ent)}</div>
                 </td>
-                <td style="padding:0.65rem 0.9rem;vertical-align:top">
-                    <span style="display:inline-block;background:{bg_est};color:{fg_est};
-                        border:1px solid {fg_est}40;border-radius:12px;padding:2px 9px;
-                        font-size:0.65rem;font-weight:700;white-space:nowrap">
+                <td class="rep-cell">
+                    <span class="rep-pill-estado"
+                          style="background:{bg_est};color:{fg_est};border:1px solid {fg_est}55">
                         {html.escape(cfg['label'])}
                     </span>
                 </td>
-                <td style="padding:0.65rem 0.9rem;vertical-align:top;text-align:center">
-                    <div style="font-family:'DM Mono',monospace;font-size:1.1rem;font-weight:800;
-                        color:{C['azul_oscuro']};line-height:1">{n_ent_alerta}</div>
-                    <div style="font-size:0.62rem;color:{C['muted']};margin-top:2px">
-                        de {n_ent_total}
-                    </div>
-                    <div style="margin-top:4px">{pills_html}</div>
+                <td class="rep-cell rep-count-cell">
+                    <div class="rep-count">{n_ent_alerta}</div>
+                    <span class="of">de {n_ent_total}</span>
+                    <div class="rep-pills">{pills_html}</div>
                 </td>
-                <td style="padding:0.65rem 0.9rem;vertical-align:top;
-                    font-size:0.75rem;color:{C['text']};line-height:1.6">
-                    {com_ent}
+                <td class="rep-cell rep-comment-cell">
+                    <div class="rep-comment">{com_ent}</div>
+                    {proys_html}
                 </td>
             </tr>""")
 
@@ -1876,26 +1919,125 @@ if tab_alertas is not None:
     st.markdown(f"""
     <style>
     .reporte-table {{
-        width: 100%; border-collapse: collapse; font-size: 0.83rem;
+        width: 100%; border-collapse: collapse; font-size: 0.81rem;
         background: #ffffff; border-radius: 10px; overflow: hidden;
         box-shadow: 0 2px 16px rgba(0,40,90,0.09);
+        table-layout: fixed;
     }}
     .reporte-table thead tr {{ background: {C['azul_oscuro']}; color: white; }}
     .reporte-table th {{
-        padding: 0.7rem 0.9rem; font-family: 'Montserrat', sans-serif;
+        padding: 0.65rem 0.85rem; font-family: 'Montserrat', sans-serif;
         font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
         letter-spacing: 0.8px; text-align: left;
+        border-right: 1px solid rgba(255,255,255,0.15);
     }}
-    .reporte-table td {{ border-bottom: 1px solid {C['border']}; }}
-    .reporte-table tbody tr:last-child td {{ border-bottom: none; }}
-    .reporte-table tbody tr:hover td {{ background: #f0f6ff !important; transition: background 0.12s; }}
+    .reporte-table th:last-child {{ border-right: none; }}
+    /* Celdas tabulares: padding consistente, separadores verticales suaves */
+    .reporte-table td.rep-cell {{
+        padding: 0.55rem 0.85rem;
+        vertical-align: top;
+        border-bottom: 1px solid {C['border']};
+        border-right: 1px solid {C['border']}99;
+    }}
+    .reporte-table td.rep-cell:last-child {{ border-right: none; }}
+    .reporte-table tr.rep-data-row:hover td.rep-cell {{
+        background: #f0f6ff;
+        transition: background 0.12s;
+    }}
+    /* Fila de encabezado por estado (separador entre bloques) */
+    .reporte-table tr.rep-estado-row td {{
+        font-family: 'Montserrat', sans-serif;
+    }}
+    /* Celda Dependencia */
+    .rep-dep {{
+        font-weight: 700; font-size: 0.82rem;
+        color: {C['azul_oscuro']}; line-height: 1.3;
+    }}
+    /* Pill de estado del proyecto */
+    .rep-pill-estado {{
+        display: inline-block;
+        border-radius: 14px;
+        padding: 3px 10px;
+        font-size: 0.65rem; font-weight: 700;
+        white-space: nowrap;
+    }}
+    /* Conteo de alertas */
+    .rep-count-cell {{ text-align: center; }}
+    .rep-count {{
+        font-family: 'DM Mono', monospace;
+        font-size: 1.15rem; font-weight: 800;
+        color: {C['azul_oscuro']}; line-height: 1;
+    }}
+    .rep-count-cell .of {{
+        display: block;
+        font-size: 0.62rem; font-weight: 400;
+        color: {C['muted']}; margin-top: 3px;
+    }}
+    .rep-pills {{ margin-top: 5px; }}
+    /* Comentario */
+    .rep-comment {{
+        font-size: 0.74rem;
+        color: {C['text']};
+        line-height: 1.55;
+    }}
+    /* Listado de proyectos con alerta — bajo el comentario */
+    .rep-proys {{
+        margin-top: 0.55rem;
+        padding-top: 0.55rem;
+        border-top: 1px dashed {C['border']};
+    }}
+    .rep-proys-titulo {{
+        font-size: 0.6rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.7px;
+        color: {C['muted']}; margin-bottom: 0.35rem;
+    }}
+    .rep-proys ul {{
+        margin: 0; padding-left: 1.05rem;
+        font-size: 0.72rem; line-height: 1.6;
+        color: {C['text']};
+    }}
+    .rep-proys li {{ margin: 2px 0; }}
+    .rep-proy-nombre {{
+        color: {C['azul_oscuro']}; font-weight: 600;
+    }}
+    .rep-proy-bpin {{
+        color: {C['muted']};
+        font-family: 'DM Mono', monospace;
+        font-size: 0.66rem;
+        margin-left: 3px;
+    }}
+    /* Collapsible "+N más" para entidades con muchos proyectos */
+    .rep-proys-mas {{ margin-top: 0.35rem; }}
+    .rep-proys-mas summary {{
+        cursor: pointer;
+        font-size: 0.66rem; font-weight: 700;
+        color: {C['azul_medio']};
+        list-style: none;
+        padding: 2px 0;
+        outline: none;
+    }}
+    .rep-proys-mas summary::-webkit-details-marker {{ display: none; }}
+    .rep-proys-mas summary::before {{
+        content: '▸'; margin-right: 4px;
+        display: inline-block;
+        transition: transform 0.15s ease;
+    }}
+    .rep-proys-mas[open] summary::before {{ transform: rotate(90deg); }}
+    .rep-proys-mas summary:hover {{ color: {C['azul_oscuro']}; text-decoration: underline; }}
+    .rep-proys-mas ul {{ margin-top: 0.25rem; }}
     </style>
     <table class="reporte-table">
+    <colgroup>
+        <col style="width:22%">
+        <col style="width:18%">
+        <col style="width:14%">
+        <col style="width:46%">
+    </colgroup>
     <thead><tr>
-        <th style="width:20%">Dependencia</th>
-        <th style="width:22%">Estado del proyecto</th>
-        <th style="width:15%">N.° proyectos<br>con alerta</th>
-        <th>Comentario</th>
+        <th>Dependencia</th>
+        <th>Estado del proyecto</th>
+        <th>N.° proyectos<br>con alerta</th>
+        <th>Comentario y proyectos</th>
     </tr></thead>
     <tbody>{"".join(reporte_rows) if reporte_rows else
         f'<tr><td colspan="4" style="padding:1.2rem;color:{_color_muted};font-style:italic;text-align:center">'
@@ -2781,63 +2923,116 @@ if tab_d_alertas is not None and df_descent_hitos is not None:
             if df_eje.height == 0:
                 continue
             conteos_eje: dict = {}
+            # Recolectar nombres de proyectos en alerta por ejecutor.
+            proyectos_alerta = []
+            nombre_col_d = "NOMBRE DEL PROYECTO" if "NOMBRE DEL PROYECTO" in df_descent_hitos.columns else None
             for clasi_col, hito_col in cfg["hitos"]:
                 if clasi_col not in df_descent_hitos.columns:
                     continue
                 for alerta in ALERTAS_NRN_D.get(hito_col, []):
-                    n = int(df_eje.filter(pl.col(clasi_col) == alerta).height)
+                    df_alerta = df_eje.filter(pl.col(clasi_col) == alerta)
+                    n = int(df_alerta.height)
                     if n > 0:
                         conteos_eje[alerta] = conteos_eje.get(alerta, 0) + n
+                        for r in df_alerta.iter_rows(named=True):
+                            proyectos_alerta.append({
+                                "nombre": (r.get(nombre_col_d) if nombre_col_d else None) or "—",
+                                "bpin":   str(r.get("BPIN") or "—"),
+                                "alerta": alerta,
+                            })
             n_eje_alerta = sum(conteos_eje.values())
             if n_eje_alerta == 0:
                 continue
             pills = "".join(_pill_alerta_d(k) for k in sorted(conteos_eje, key=lambda x: conteos_eje[x], reverse=True))
-            filas_eje.append((eje, df_eje.height, n_eje_alerta, pills, conteos_eje))
+            filas_eje.append((eje, df_eje.height, n_eje_alerta, pills, conteos_eje, proyectos_alerta))
 
         if not filas_eje:
             continue
 
         fg_est, bg_est = cfg["color_est"]
+        # Fila encabezado por estado — mismo estilo que Departamento.
         reporte_rows_d.append(
-            f'<tr style="background:{bg_est}20">'
-            f'<td colspan="4" style="padding:0.55rem 0.9rem;border-bottom:2px solid {fg_est}30">'
-            f'<span style="font-family:\'Montserrat\',sans-serif;font-size:0.67rem;font-weight:800;'
-            f'text-transform:uppercase;letter-spacing:0.8px;color:{fg_est}">'
+            f'<tr class="rep-estado-row" style="background:{bg_est}25;border-top:2px solid {fg_est}55">'
+            f'<td colspan="4" style="padding:0.5rem 0.85rem;border-bottom:2px solid {fg_est}55">'
+            f'<span style="font-family:\'Montserrat\',sans-serif;font-size:0.68rem;font-weight:800;'
+            f'text-transform:uppercase;letter-spacing:0.9px;color:{fg_est}">'
             f'{cfg["label"]}</span>'
-            f'<span style="font-size:0.7rem;color:{C["muted"]};font-weight:400;margin-left:0.6rem">'
-            f'{n_total_est} proyecto(s) en este estado · {n_total_alerta} con alerta</span>'
+            f'<span style="font-size:0.7rem;color:{C["muted"]};font-weight:500;margin-left:0.7rem">'
+            f'· {n_total_est} proyecto(s) en este estado · {n_total_alerta} con alerta</span>'
             f'</td></tr>'
         )
-        for eje, n_eje_total, n_eje_alerta, pills_html, conteos_eje in filas_eje:
+        MAX_INLINE_D = 5
+        for eje, n_eje_total, n_eje_alerta, pills_html, conteos_eje, proys_alerta in filas_eje:
             com_eje = _comentario_reporte_d(estado_up, conteos_eje, n_eje_alerta)
-            reporte_rows_d.append(f"""<tr>
-                <td style="font-weight:600;font-size:0.81rem;color:{C['azul_oscuro']};
-                    padding:0.65rem 0.9rem;vertical-align:top">{html.escape(eje)}</td>
-                <td style="padding:0.65rem 0.9rem;vertical-align:top">
-                    <span style="display:inline-block;background:{bg_est};color:{fg_est};
-                        border:1px solid {fg_est}40;border-radius:12px;padding:2px 9px;
-                        font-size:0.65rem;font-weight:700;white-space:nowrap">
+
+            # Renderizado de proyectos: 5 inline + resto en details colapsable.
+            def _proy_li_d(p):
+                _nom  = html.escape((p["nombre"] or "—")[:200])
+                _bpin = html.escape(p["bpin"])
+                _pill = _pill_alerta_d(p["alerta"])
+                return (
+                    f'<li>'
+                    f'<span class="rep-proy-nombre">{_nom}</span>'
+                    f'<span class="rep-proy-bpin">· {_bpin}</span> '
+                    f'{_pill}'
+                    f'</li>'
+                )
+
+            visibles_d = proys_alerta[:MAX_INLINE_D]
+            ocultos_d  = proys_alerta[MAX_INLINE_D:]
+            items_html = "".join(_proy_li_d(p) for p in visibles_d)
+            extra_html = ""
+            if ocultos_d:
+                extra_items = "".join(_proy_li_d(p) for p in ocultos_d)
+                extra_html = (
+                    f'<details class="rep-proys-mas">'
+                    f'<summary>+{len(ocultos_d)} más</summary>'
+                    f'<ul>{extra_items}</ul>'
+                    f'</details>'
+                )
+            proys_html = (
+                f'<div class="rep-proys">'
+                f'<div class="rep-proys-titulo">Proyectos con alerta</div>'
+                f'<ul>{items_html}</ul>'
+                f'{extra_html}'
+                f'</div>'
+            ) if proys_alerta else ""
+
+            reporte_rows_d.append(f"""<tr class="rep-data-row">
+                <td class="rep-cell rep-dep-cell">
+                    <div class="rep-dep">{html.escape(eje)}</div>
+                </td>
+                <td class="rep-cell">
+                    <span class="rep-pill-estado"
+                          style="background:{bg_est};color:{fg_est};border:1px solid {fg_est}55">
                         {html.escape(cfg['label'])}
                     </span>
                 </td>
-                <td style="padding:0.65rem 0.9rem;vertical-align:top;text-align:center">
-                    <div style="font-family:'DM Mono',monospace;font-size:1.1rem;font-weight:800;
-                        color:{C['azul_oscuro']};line-height:1">{n_eje_alerta}</div>
-                    <div style="font-size:0.62rem;color:{C['muted']};margin-top:2px">de {n_eje_total}</div>
-                    <div style="margin-top:4px">{pills_html}</div>
+                <td class="rep-cell rep-count-cell">
+                    <div class="rep-count">{n_eje_alerta}</div>
+                    <span class="of">de {n_eje_total}</span>
+                    <div class="rep-pills">{pills_html}</div>
                 </td>
-                <td style="padding:0.65rem 0.9rem;vertical-align:top;
-                    font-size:0.75rem;color:{C['text']};line-height:1.6">{com_eje}</td>
+                <td class="rep-cell rep-comment-cell">
+                    <div class="rep-comment">{com_eje}</div>
+                    {proys_html}
+                </td>
             </tr>""")
 
     _color_muted_d = C["muted"]
     st.markdown(f"""
     <table class="reporte-table">
+    <colgroup>
+        <col style="width:22%">
+        <col style="width:18%">
+        <col style="width:14%">
+        <col style="width:46%">
+    </colgroup>
     <thead><tr>
-        <th style="width:22%">Ejecutor</th>
-        <th style="width:24%">Estado del proyecto</th>
-        <th style="width:15%">N.° proyectos<br>con alerta</th>
-        <th>Comentario</th>
+        <th>Ejecutor</th>
+        <th>Estado del proyecto</th>
+        <th>N.° proyectos<br>con alerta</th>
+        <th>Comentario y proyectos</th>
     </tr></thead>
     <tbody>{"".join(reporte_rows_d) if reporte_rows_d else
         f'<tr><td colspan="4" style="padding:1.2rem;color:{_color_muted_d};font-style:italic;text-align:center">'
