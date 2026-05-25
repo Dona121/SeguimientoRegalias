@@ -368,10 +368,10 @@ with st.sidebar:
         )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# HEADER — se oculta para la vista Mapa (que es full-screen y tiene su propia
-# barra superior dentro del componente).
+# HEADER — se oculta para Mapa (full-screen con su propia barra) y para IGPR
+# (que tiene su propio encabezado específico de la medición).
 # ─────────────────────────────────────────────────────────────────────────────
-if vista != "Mapa":
+if vista not in ("Mapa", "IGPR"):
     st.markdown("""
 <div class="page-header">
   <div>
