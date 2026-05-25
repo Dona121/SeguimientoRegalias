@@ -290,7 +290,7 @@ with st.sidebar:
     st.markdown("<div class='sidebar-section'>Vista</div>", unsafe_allow_html=True)
     vista = st.radio(
         "Vista",
-        ["Guía de hitos", "Departamento", "Descentralizadas", "Municipios", "Mapa"],
+        ["Guía de hitos", "Departamento", "Descentralizadas", "Municipios", "Mapa", "IGPR"],
         label_visibility="collapsed",
         key="vista_principal",
         help=(
@@ -298,7 +298,8 @@ with st.sidebar:
             "Departamento: Matriz de Seguimiento (hitos completos).\n"
             "Descentralizadas: Hitos 1-4 + evaluación.\n"
             "Municipios: solo listado de proyectos.\n"
-            "Mapa: visor geográfico de los proyectos por municipio."
+            "Mapa: visor geográfico de los proyectos por municipio.\n"
+            "IGPR: Índice de Gestión de Proyectos de Regalías (DNP, Res. 4574/2025)."
         ),
     )
 
@@ -544,6 +545,16 @@ df_f = df
 # ═════════════════════════════════════════════════════════════════════════════
 if vista == "Guía de hitos":
     render_guia_hitos(incluir_h5=True, fuente="Guía global")
+    st.stop()
+
+# ═════════════════════════════════════════════════════════════════════════════
+# VISTA IGPR — Índice de Gestión de Proyectos de Regalías (DNP).
+# Toda la lógica vive en igpr.py / data_igpr.py. Solo necesita los bytes de la
+# Matriz de Seguimiento para construir el catálogo BPIN → ENTIDAD.
+# ═════════════════════════════════════════════════════════════════════════════
+if vista == "IGPR":
+    from igpr import render_igpr
+    render_igpr(file_bytes)
     st.stop()
 
 # ═════════════════════════════════════════════════════════════════════════════
