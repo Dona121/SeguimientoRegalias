@@ -372,16 +372,11 @@ def _procesar_un_trimestre(file_bytes: bytes,
             pl.max_horizontal([f"_situ_{i}" for i in range(len(cols_situacion_presentes))])
               .alias("PRESENTA ALGUNA SITUACION QUE AFECTA PUNTAJE")
         )
-        # Guardamos el puntaje original y aplicamos −10 puntos absolutos al
-        # PUNTAJE de los proyectos con situación. Clampeamos en [0, 100].
-        df = df.with_columns(
-            pl.col("PUNTAJE").alias("PUNTAJE_ORIGINAL"),
-            pl.when(pl.col("PRESENTA ALGUNA SITUACION QUE AFECTA PUNTAJE") == 1)
-              .then((pl.col("PUNTAJE") - 10.0).clip(0.0, 100.0))
-              .otherwise(pl.col("PUNTAJE"))
-              .round(2)
-              .alias("PUNTAJE")
-        )
+        # NOTA: el descuento de −10 puntos NO se aplica a nivel de proyecto
+        # individual — se aplica al PROMEDIO del periodo de cada entidad
+        # cuando al menos un proyecto de esa entidad presentó situación.
+        # Esa lógica vive en resumen_por_periodo() y resumen_por_entidad_periodo().
+        # Aquí solo dejamos la columna flag (0/1) por proyecto.
         # Limpiamos columnas auxiliares.
         df = df.drop([f"_situ_{i}" for i in range(len(cols_situacion_presentes))])
 
@@ -393,7 +388,7 @@ def _procesar_un_trimestre(file_bytes: bytes,
 
 # Bump _CACHE_VERSION cuando cambie la lógica de cargar_igpr — eso fuerza
 # que Streamlit invalide el resultado guardado y re-ejecute la función.
-_CARGAR_IGPR_CACHE_VERSION = "v3-2026descuento10abs-fuzzymatch"
+_CARGAR_IGPR_CACHE_VERSION = "v4-descuento-a-nivel-entidad-periodo"
 
 
 @st.cache_data(show_spinner=False, ttl=3600)
@@ -456,10 +451,10 @@ def _cargar_igpr_impl_v2(matriz_bytes: bytes, cache_version: str) -> pl.DataFram
         pl.col("PUNTAJE").map_elements(clasificar_puntaje, return_dtype=pl.Utf8).alias("CATEGORIA"),
     )
 
-    # Diagnóstico — útil para verificar si el descuento se aplicó
-    if "PUNTAJE_ORIGINAL" in consolidado.columns:
-        n_situ = int((consolidado["PUNTAJE"] != consolidado["PUNTAJE_ORIGINAL"]).sum())
-        _log.info("IGPR: %d proyecto(s) recibieron descuento de -10 pts por situación", n_situ)
+    # Diagnóstico — útil para verificar la detección de situaciones.
+    if "PRESENTA ALGUNA SITUACION QUE AFECTA PUNTAJE" in consolidado.columns:
+        n_situ = int(consolidado["PRESENTA ALGUNA SITUACION QUE AFECTA PUNTAJE"].sum())
+        _log.info("IGPR: %d proyecto(s) marcados con alguna situación (vigencia 2026)", n_situ)
 
     return consolidado
 
@@ -473,30 +468,74 @@ def cargar_igpr(matriz_bytes: bytes) -> pl.DataFrame:
 # Agregaciones derivadas — facilitan la vida en igpr.py
 # ─────────────────────────────────────────────────────────────────────────────
 def resumen_por_periodo(df: pl.DataFrame) -> pl.DataFrame:
-    """Promedio simple, mínimo, máximo y conteo por trimestre + vigencia."""
+    """Promedio simple, mínimo, máximo y conteo por trimestre + vigencia.
+
+    Para vigencia >= 2026, al promedio bruto se le resta 10 puntos cuando
+    AL MENOS UN proyecto del periodo presentó alguna situación
+    (Inconsistencias, Irregularidades graves o Modificación de reporte).
+    """
     if df.is_empty():
         return df
-    return (
+    flag_col = "PRESENTA ALGUNA SITUACION QUE AFECTA PUNTAJE"
+    aggs = [
+        pl.col("PUNTAJE").mean().round(1).alias("PROMEDIO_BRUTO"),
+        pl.col("PUNTAJE").min().round(1).alias("MINIMO"),
+        pl.col("PUNTAJE").max().round(1).alias("MAXIMO"),
+        pl.col("BPIN").n_unique().alias("PROYECTOS"),
+    ]
+    if flag_col in df.columns:
+        aggs += [
+            pl.col(flag_col).max().alias("_hay_situacion"),
+            pl.col(flag_col).sum().alias("PROYECTOS_CON_SITUACION"),
+        ]
+    res = (
         df.group_by(["VIGENCIA", "TRIMESTRE EVALUADO", "_orden_trim", "PERIODO"], maintain_order=True)
-          .agg(
-              pl.col("PUNTAJE").mean().round(1).alias("PROMEDIO"),
-              pl.col("PUNTAJE").min().round(1).alias("MINIMO"),
-              pl.col("PUNTAJE").max().round(1).alias("MAXIMO"),
-              pl.col("BPIN").n_unique().alias("PROYECTOS"),
-          )
+          .agg(aggs)
           .sort(["VIGENCIA", "_orden_trim"])
     )
+    # Aplicar descuento de -10 puntos al promedio si vigencia>=2026 y hay
+    # al menos un proyecto con situación en el periodo. Clamp en [0, 100].
+    if "_hay_situacion" in res.columns:
+        res = res.with_columns(
+            pl.when((pl.col("VIGENCIA") >= 2026) & (pl.col("_hay_situacion") == 1))
+              .then((pl.col("PROMEDIO_BRUTO") - 10.0).clip(0.0, 100.0))
+              .otherwise(pl.col("PROMEDIO_BRUTO"))
+              .round(1)
+              .alias("PROMEDIO")
+        ).drop("_hay_situacion")
+    else:
+        res = res.with_columns(pl.col("PROMEDIO_BRUTO").alias("PROMEDIO"))
+    return res
 
 
 def resumen_por_entidad_periodo(df: pl.DataFrame) -> pl.DataFrame:
-    """Promedio por entidad × periodo (matriz para la tabla resumen)."""
+    """Promedio por entidad × periodo (matriz para la tabla resumen).
+
+    Para vigencia >= 2026, al promedio de cada entidad se le resta 10 puntos
+    cuando AL MENOS UNO de sus proyectos en el periodo presentó situación.
+    """
     if df.is_empty():
         return df
-    return (
+    flag_col = "PRESENTA ALGUNA SITUACION QUE AFECTA PUNTAJE"
+    aggs = [
+        pl.col("PUNTAJE").mean().round(1).alias("PROMEDIO_BRUTO"),
+        pl.col("BPIN").n_unique().alias("PROYECTOS"),
+    ]
+    if flag_col in df.columns:
+        aggs.append(pl.col(flag_col).max().alias("_hay_situacion"))
+    res = (
         df.group_by(["ENTIDAD", "VIGENCIA", "TRIMESTRE EVALUADO", "_orden_trim", "PERIODO"], maintain_order=True)
-          .agg(
-              pl.col("PUNTAJE").mean().round(1).alias("PROMEDIO"),
-              pl.col("BPIN").n_unique().alias("PROYECTOS"),
-          )
+          .agg(aggs)
           .sort(["ENTIDAD", "VIGENCIA", "_orden_trim"])
     )
+    if "_hay_situacion" in res.columns:
+        res = res.with_columns(
+            pl.when((pl.col("VIGENCIA") >= 2026) & (pl.col("_hay_situacion") == 1))
+              .then((pl.col("PROMEDIO_BRUTO") - 10.0).clip(0.0, 100.0))
+              .otherwise(pl.col("PROMEDIO_BRUTO"))
+              .round(1)
+              .alias("PROMEDIO")
+        ).drop("_hay_situacion")
+    else:
+        res = res.with_columns(pl.col("PROMEDIO_BRUTO").alias("PROMEDIO"))
+    return res

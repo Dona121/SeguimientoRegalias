@@ -320,9 +320,11 @@ def _resumen_general(df: pl.DataFrame) -> None:
 
     # ── Diagnóstico del descuento 2026 (panel colapsado) ────────────────
     # Muestra cuántos proyectos del trimestre tuvieron al menos una situación
-    # marcada SI, junto con el promedio antes y después del descuento de
-    # 10 puntos. Si "PUNTAJE_ORIGINAL" no está, no se aplicó descuento.
-    if "PUNTAJE_ORIGINAL" in df.columns:
+    # marcada SI, junto con el promedio bruto del periodo y el ajustado.
+    # El descuento de -10 puntos se aplica al PROMEDIO del periodo cuando al
+    # menos un proyecto de la entidad presentó situación.
+    flag_col = "PRESENTA ALGUNA SITUACION QUE AFECTA PUNTAJE"
+    if flag_col in df.columns:
         df_2026 = df.filter(pl.col("VIGENCIA") == 2026)
         if df_2026.height > 0:
             with st.expander("Diagnóstico · Descuento por situaciones (vigencia 2026)", expanded=False):
@@ -330,21 +332,27 @@ def _resumen_general(df: pl.DataFrame) -> None:
                     df_2026
                     .group_by(["PERIODO", "_orden_trim"], maintain_order=True)
                     .agg(
-                        pl.col("PUNTAJE_ORIGINAL").mean().round(2).alias("Promedio_sin_descuento"),
-                        pl.col("PUNTAJE").mean().round(2).alias("Promedio_con_descuento"),
-                        (pl.col("PUNTAJE") != pl.col("PUNTAJE_ORIGINAL"))
-                          .sum().alias("Proyectos_con_situacion"),
+                        pl.col("PUNTAJE").mean().round(2).alias("Promedio_bruto"),
+                        pl.col(flag_col).sum().alias("Proyectos_con_situacion"),
                         pl.col("BPIN").n_unique().alias("Total_proyectos"),
+                    )
+                    .with_columns(
+                        pl.when(pl.col("Proyectos_con_situacion") >= 1)
+                          .then((pl.col("Promedio_bruto") - 10.0).clip(0.0, 100.0))
+                          .otherwise(pl.col("Promedio_bruto"))
+                          .round(2)
+                          .alias("Promedio_ajustado_(-10_si_hay_situacion)")
                     )
                     .sort("_orden_trim")
                     .drop("_orden_trim")
                 )
                 st.dataframe(diag.to_pandas(), use_container_width=True, hide_index=True)
                 st.caption(
-                    "El descuento se aplica por proyecto cuando al menos una "
-                    "de las 3 columnas (Inconsistencias / Irregularidades graves / "
-                    "Modificación de reporte) está marcada como SI. Cada proyecto "
-                    "afectado recibe −10 puntos (clamp en 0)."
+                    "El descuento se aplica al PROMEDIO del periodo cuando al menos "
+                    "uno de los proyectos del Departamento de Sucre tiene una situación "
+                    "marcada SI en alguna de las 3 columnas (Inconsistencias / "
+                    "Irregularidades graves / Modificación de reporte). El descuento "
+                    "es de −10 puntos (clamp en 0)."
                 )
 
 
@@ -759,12 +767,12 @@ def render_igpr(matriz_bytes: bytes | None) -> None:
         )
         return
 
-    # ── Tabs ─────────────────────────────────────────────────────────────
+    # Tabs
     tabs = st.tabs([
         "Resumen general",
         "Detalle por trimestre",
         "Detalle por entidad",
-        "Metodología",
+        "Metodologia",
     ])
 
     with tabs[0]:
