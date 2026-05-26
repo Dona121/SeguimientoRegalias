@@ -270,10 +270,44 @@ def _procesar_un_trimestre(file_bytes: bytes,
         _log.warning("Faltan columnas en %s: %s — se omite", cfg["tabla"], faltan)
         return None
 
+    # Detección flexible de las columnas de "extras": en lugar de exigir
+    # nombre exacto, hacemos match por substring (case-insensitive) sobre los
+    # nombres ya limpiados. Esto sobrevive a variaciones menores en los
+    # headers entre versiones del archivo.
+    _norm_col = lambda x: (
+        str(x).upper().replace("Í", "I").replace("É", "E").replace("Á", "A")
+              .replace("Ó", "O").replace("Ú", "U")
+    )
+    _cols_norm_map = {_norm_col(c): c for c in df.columns}
+
+    def _buscar_col(claves: list[str]) -> str | None:
+        """Devuelve el nombre original de la primera columna cuyo nombre
+        contenga TODAS las claves (case-insensitive, sin tildes)."""
+        for norm_name, orig in _cols_norm_map.items():
+            if all(k in norm_name for k in claves):
+                return orig
+        return None
+
     cols_select = ["BPIN", "NOMBRE DEL PROYECTO", cfg["col_puntaje"]]
+    extras_resueltas: list[str] = []   # nombres reales detectados
     for extra in cfg.get("extras", []):
         if extra in df.columns:
             cols_select.append(extra)
+            extras_resueltas.append(extra)
+        else:
+            # Intentar resolverlo por substring de palabras clave
+            claves_por_extra = {
+                "INCONSISTENCIAS EN VISITAS": ["INCONSISTENCIA"],
+                "PROYECTOS CON PRESUNTAS IRREGULARIDADES GRAVES": ["IRREGULARIDAD"],
+                "MODIFICACIÓN REPORTE EJECUCIÓN": ["MODIFICAC", "REPORTE"],
+                "CLASIFICACIÓN PLAZO PARA EJECUCIÓN": ["CLASIFICACION", "PLAZO"],
+            }
+            claves = claves_por_extra.get(extra, [_norm_col(extra)])
+            real = _buscar_col(claves)
+            if real and real not in cols_select:
+                cols_select.append(real)
+                extras_resueltas.append(real)
+                _log.info("IGPR %s: columna '%s' resuelta como '%s'", cfg["tabla"], extra, real)
 
     df = (
         df.filter(pl.col("ENTIDAD EJECUTORA O BENEFICIARIA (A MEDIR)") == "DEPARTAMENTO DE SUCRE")
@@ -302,29 +336,35 @@ def _procesar_un_trimestre(file_bytes: bytes,
     # se considera que presentó una situación que afecta el puntaje y se le
     # descuentan 10 puntos absolutos al puntaje del trimestre (clamp >= 0).
     # ────────────────────────────────────────────────────────────────────
-    cols_situacion = [
-        "INCONSISTENCIAS EN VISITAS",
-        "PROYECTOS CON PRESUNTAS IRREGULARIDADES GRAVES",
-        "MODIFICACIÓN REPORTE EJECUCIÓN",
-    ]
-    cols_situacion_presentes = [c for c in cols_situacion if c in df.columns]
+    # Resolver las columnas reales de situación (después del match flexible
+    # que se hizo arriba en `extras_resueltas`).
+    _claves_situacion = {
+        "inconsistencias": ["INCONSISTENCIA"],
+        "irregularidades": ["IRREGULARIDAD"],
+        "modificacion":    ["MODIFICAC", "REPORTE"],
+    }
+    _cols_post_select = {_norm_col(c): c for c in df.columns}
+    cols_situacion_presentes: list[str] = []
+    for _key, claves in _claves_situacion.items():
+        for norm_name, orig in _cols_post_select.items():
+            if all(k in norm_name for k in claves):
+                cols_situacion_presentes.append(orig)
+                break
+
     if cfg["vigencia"] >= 2026 and cols_situacion_presentes:
-        # Cada flag es 1 si la celda está marcada como SI (en cualquier casing
-        # o con tilde), 0 si está marcada como NO, y 0 también si viene null
-        # o con cualquier otro valor inesperado. Hacemos un compare por contains
-        # del literal "SI" después de normalizar (str + strip + upper), porque
-        # algunos exports traen variantes ("SI", "Si", "SÍ", "si", "SI ", etc.)
-        # y queremos ser tolerantes con todos.
+        _log.info("IGPR %s: columnas de situación detectadas: %s",
+                  cfg["tabla"], cols_situacion_presentes)
+        # Set de valores que consideramos "SI" — robusto frente a variantes.
+        VALORES_SI = {"SI", "SÍ", "S", "1", "X", "TRUE", "VERDADERO", "YES", "Y"}
         for i, c in enumerate(cols_situacion_presentes):
             norm = (
                 pl.col(c).cast(pl.Utf8, strict=False)
                   .fill_null("")
                   .str.strip_chars()
                   .str.to_uppercase()
-                  .str.replace_all("Í", "I")
             )
             df = df.with_columns(
-                pl.when(norm == "SI").then(1).otherwise(0)
+                pl.when(norm.is_in(list(VALORES_SI))).then(1).otherwise(0)
                   .cast(pl.Int32)
                   .alias(f"_situ_{i}")
             )
@@ -353,7 +393,7 @@ def _procesar_un_trimestre(file_bytes: bytes,
 
 # Bump _CACHE_VERSION cuando cambie la lógica de cargar_igpr — eso fuerza
 # que Streamlit invalide el resultado guardado y re-ejecute la función.
-_CARGAR_IGPR_CACHE_VERSION = "v2-2026descuento10pts"
+_CARGAR_IGPR_CACHE_VERSION = "v3-2026descuento10abs-fuzzymatch"
 
 
 @st.cache_data(show_spinner=False, ttl=3600)
