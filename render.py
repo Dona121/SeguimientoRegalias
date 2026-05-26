@@ -35,13 +35,13 @@ _BADGE_BY_HITO = {
         "31-45": "badge-orange",
         ">45":   "badge-black",
     },
-    "hito_4_val": {
+    "hito_5_val": {
         "0-1":   "badge-green",
         "1.1-3": "badge-yellow",
         "3.1-6": "badge-orange",
         ">6":    "badge-black",
     },
-    "hito_5_val": {
+    "hito_6_val": {
         "0-100":   "badge-green",
         "101-150": "badge-yellow",
         "151-180": "badge-orange",
@@ -223,6 +223,24 @@ def _contratos_panel(bpin_str, df_cttos):
         # Fecha de terminación (FECHA FINAL REAL) — ya parseada como pl.Date
         # en procesar_contratos. Mostramos DD/MM/YYYY si existe.
         fecha_term = _fmt_date(ctto.get("FECHA FINAL REAL"))
+        # Diferencia en meses entre FECHA FINAL REAL y FECHA FINAL (programada).
+        _ff  = ctto.get("FECHA FINAL")
+        _ffr = ctto.get("FECHA FINAL REAL")
+        if _ff is not None and _ffr is not None:
+            try:
+                _delta_meses = (_ffr - _ff).days / 30.0
+                _signo = "+" if _delta_meses > 0 else ""
+                _col_diff = (C["salmon"] if _delta_meses > 0
+                             else (C["verde_medio"] if _delta_meses < 0 else C["muted"]))
+                _diff_html = (
+                    f"<span style=\"font-family:DM Mono,monospace;font-weight:700;"
+                    f"color:{_col_diff};font-size:0.78rem\">"
+                    f"{_signo}{_delta_meses:.1f} m</span>"
+                )
+            except Exception:
+                _diff_html = "<span style=\"color:#9ca3af\">—</span>"
+        else:
+            _diff_html = "<span style=\"color:#9ca3af\">—</span>"
 
         bar_px = 0
         if valor and v_max > v_min:
@@ -242,6 +260,7 @@ def _contratos_panel(bpin_str, df_cttos):
             </td>
             <td><span class="ctto-estado-pill" style="background:{bg_e};color:{fg_e};border:1px solid {fg_e}40">{html.escape(ctto.get("ESTADO CONTRATO") or "—")}</span></td>
             <td style="font-size:0.73rem;color:{C['text']};white-space:nowrap;text-align:center">{fecha_term}</td>
+            <td style="white-space:nowrap;text-align:center">{_diff_html}</td>
             <td><div class="ctto-objeto">{objeto}</div></td>
         </tr>""")
 
@@ -254,6 +273,7 @@ def _contratos_panel(bpin_str, df_cttos):
         <th>Modalidad</th><th>Tipo</th>
         <th>Valor total</th><th>Estado</th>
         <th>Fecha de<br>terminación</th>
+        <th title="Diferencia en meses entre la Fecha final real y la Fecha final programada">Diferencia<br>meses<br><span style="font-weight:500;opacity:0.75;font-size:0.55rem">(real − prog.)</span></th>
         <th>Objeto del contrato</th>
     </tr></thead>
     <tbody>{rows}</tbody>
@@ -293,11 +313,17 @@ HITO_CALC_META = {
         "Días desde la suscripción del contrato hasta el corte, sin acta de inicio.",
     ),
     "hito_4_val": (
+        "Fecha acta inicio",   "FECHA ACTA INICIO",
+        "Fecha corte GESPROY", "FECHA DE CORTE GESPROY",
+        "Días desde el acta de inicio hasta el corte para proyectos en ejecución "
+        "con horizonte vigente y sin contratos suspendidos. (Hito sin semáforo)",
+    ),
+    "hito_5_val": (
         "Horizonte del proyecto", "HORIZONTE DEL PROYECTO",
         "Fecha corte GESPROY",    "FECHA DE CORTE GESPROY",
         "Días de retraso sobre el horizonte (CPI=0, SPI=0). El resultado se muestra en meses.",
     ),
-    "hito_5_val": (
+    "hito_6_val": (
         "Fecha finalización",  "FECHA DE FINALIZACIÓN",
         "Fecha corte GESPROY", "FECHA DE CORTE GESPROY",
         "Días entre la fecha de finalización registrada y el corte.",
@@ -314,7 +340,7 @@ def _dias_tooltip(r, hito_col):
     fecha_b = _fmt_date(r.get(col_b))
     dias_v  = r.get(hito_col)
     dias_display = f"{dias_v:.0f} días" if dias_v is not None else "—"
-    es_h4 = hito_col == "hito_4_val"
+    es_h4 = hito_col == "hito_5_val"
     resultado_label = f"{dias_v/30:.1f} meses ({dias_display})" if es_h4 and dias_v else dias_display
     return (
         f'<div class="dias-tip-box">'
@@ -343,15 +369,15 @@ HITO_KEY_MAP = {
     "clasi_1": "hito_1_val",
     "clasi_2": "hito_2_val",
     "clasi_3": "hito_3_val",
-    "clasi_4": "hito_4_val",
     "clasi_5": "hito_5_val",
+    "clasi_6": "hito_6_val",
 }
 CLASI_TO_HITO = {
     "clasi_1": "hito_1_val",
     "clasi_2": "hito_2_val",
     "clasi_3": "hito_3_val",
-    "clasi_4": "hito_4_val",
     "clasi_5": "hito_5_val",
+    "clasi_6": "hito_6_val",
 }
 
 
@@ -360,7 +386,7 @@ def _clasificar_promedio(dias_val, clasi_key):
     if dias_val is None or (isinstance(dias_val, float) and dias_val != dias_val):
         return None
     hito_col = CLASI_TO_HITO.get(clasi_key)
-    if hito_col == "hito_4_val":
+    if hito_col == "hito_5_val":
         meses = dias_val / 30.0
         if   meses <= 1: return "0-1"
         elif meses <= 3: return "1.1-3"
@@ -457,8 +483,8 @@ def _comentario_contextual(eu, row_data):
         cpi       = row_data.get("CPI")
         spi       = row_data.get("SPI")
         h_str     = _horizonte_str(row_data)
-        dias_h4   = row_data.get("hito_4_val")
-        alerta_h4 = _alerta_nombre(row_data.get("clasi_4"))
+        dias_h4   = row_data.get("hito_5_val")
+        alerta_h4 = _alerta_nombre(row_data.get("clasi_5"))
         partes    = []
         if cpi is not None or spi is not None:
             try:
@@ -480,8 +506,8 @@ def _comentario_contextual(eu, row_data):
         return f'<div class="etip-row">{txt}</div>'
 
     elif eu == "TERMINADO":
-        dias      = row_data.get("hito_5_val")
-        alerta    = _alerta_nombre(row_data.get("clasi_5"))
+        dias      = row_data.get("hito_6_val")
+        alerta    = _alerta_nombre(row_data.get("clasi_6"))
         fecha_fin = _fmt_date_short(row_data.get("FECHA DE FINALIZACIÓN"))
         if dias is not None:
             txt = (
@@ -560,7 +586,7 @@ def _estado_tooltip_html(est_proy, row_data=None):
             "estado_anterior": "Contratado sin acta de inicio.",
             "fecha_entrada": (
                 "Fecha de acta de inicio. "
-                "A partir de aquí se activa el Hito 4 si el horizonte vence "
+                "A partir de aquí se activa el Hito 5 si el horizonte vence "
                 "con CPI=0 y SPI=0."
             ),
             "para_avanzar": "Cumplir las metas e indicadores y remitir las actas finales de contratos.",
@@ -578,7 +604,7 @@ def _estado_tooltip_html(est_proy, row_data=None):
             "estado_anterior": "Contratado en ejecución.",
             "fecha_entrada": (
                 "No hay fecha automática. El cambio se realiza de forma manual "
-                "en GESPROY. El Hito 5 mide los días desde la finalización."
+                "en GESPROY. El Hito 6 mide los días desde la finalización."
             ),
             "para_avanzar": "Liquidar todos los contratos, completar pagos y expedir el acto administrativo de cierre.",
             "fecha_avance": "No hay fecha automática. El paso a Para cierre requiere gestión manual.",

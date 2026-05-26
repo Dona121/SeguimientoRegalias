@@ -151,8 +151,62 @@ def _leer_tabla_robusta(file_bytes, nombre):
         raise last_exc
 
 
+def aplicar_hito_4_en_ejecucion(df, df_contratos):
+    """
+    Calcula el Hito 4 — En ejecución (sin semáforo) — para el DataFrame de
+    Departamento. Aplica solo a proyectos con:
+        · ESTADO PROYECTO == "CONTRATADO EN EJECUCIÓN"
+        · HORIZONTE DEL PROYECTO >= FECHA DE CORTE GESPROY  (horizonte vigente)
+        · Ningún contrato del proyecto en estado SUSPENDIDO
+    El valor del hito son los días entre la FECHA ACTA INICIO y la FECHA DE
+    CORTE GESPROY. No genera columna de clasificación (clasi_4) porque el
+    hito no tiene semáforo: se reporta únicamente la cantidad de días.
+    Si el archivo de contratos no está disponible, asume que ningún proyecto
+    tiene contratos suspendidos (la condición de suspendido se ignora).
+    """
+    if df is None or "ESTADO PROYECTO" not in df.columns:
+        return df
+
+    # Conjunto de BPINs con al menos un contrato SUSPENDIDO (ya normalizados
+    # en procesar_contratos: sin puntos/guiones/espacios).
+    if (df_contratos is not None and df_contratos.height > 0
+            and "ESTADO CONTRATO" in df_contratos.columns):
+        bpins_susp = (
+            df_contratos
+            .filter(pl.col("ESTADO CONTRATO").cast(pl.Utf8).str.to_uppercase() == "SUSPENDIDO")
+            ["BPIN"].drop_nulls().unique().to_list()
+        )
+    else:
+        bpins_susp = []
+
+    # Normalizamos el BPIN de la matriz al mismo formato que en contratos
+    # (sin puntos/guiones/comas/espacios) para poder compararlo con bpins_susp.
+    bpin_norm = (
+        pl.col("BPIN").cast(pl.Utf8)
+        .str.replace_all(r"[.\-,\s]", "")
+    )
+
+    requeridas = ["FECHA ACTA INICIO", "FECHA DE CORTE GESPROY", "HORIZONTE DEL PROYECTO"]
+    if any(c not in df.columns for c in requeridas):
+        return df.with_columns(pl.lit(None, dtype=pl.Int64).alias("hito_4_val"))
+
+    df = df.with_columns(
+        pl.when(
+            (pl.col("ESTADO PROYECTO") == "CONTRATADO EN EJECUCIÓN") &
+            (~pl.col("FECHA ACTA INICIO").is_null()) &
+            (~pl.col("FECHA DE CORTE GESPROY").is_null()) &
+            (~pl.col("HORIZONTE DEL PROYECTO").is_null()) &
+            (pl.col("HORIZONTE DEL PROYECTO") >= pl.col("FECHA DE CORTE GESPROY")) &
+            (~bpin_norm.is_in(bpins_susp))
+        ).then(
+            (pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA ACTA INICIO")).dt.total_days()
+        ).otherwise(None).alias("hito_4_val")
+    )
+    return df
+
+
 def clasificar_hito4_meses(col):
-    """Hito 4 se clasifica en meses (días / 30), no en días directos."""
+    """Hito 5 (antes H4) se clasifica en meses (días / 30), no en días directos."""
     meses = pl.col(col) / 30.0
     return (
         pl.when(pl.col(col).is_null()).then(None)
@@ -298,13 +352,13 @@ def procesar(file_bytes, fecha_corte_override=None):
                 (pl.col("ESTADO PROYECTO") == "CONTRATADO SIN ACTA DE INICIO") &
                 (~pl.col("FECHA SUSCRIPCION").is_null())
             ).then((pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA SUSCRIPCION")).dt.total_days()).otherwise(None).alias("hito_3_val"),
-            # Hito 4
+            # Hito 5
             pl.when(
                 (pl.col("ESTADO PROYECTO") == "CONTRATADO EN EJECUCIÓN") &
                 (pl.col("CPI") == 0) & (pl.col("SPI") == 0) &
                 (pl.col("HORIZONTE DEL PROYECTO") <= pl.col("FECHA DE CORTE GESPROY"))
-            ).then((pl.col("FECHA DE CORTE GESPROY") - pl.col("HORIZONTE DEL PROYECTO")).dt.total_days()).otherwise(None).alias("hito_4_val"),
-            # Hito 5 — solo proyectos con estado TERMINADO. Antes contaba todos
+            ).then((pl.col("FECHA DE CORTE GESPROY") - pl.col("HORIZONTE DEL PROYECTO")).dt.total_days()).otherwise(None).alias("hito_5_val"),
+            # Hito 6 — solo proyectos con estado TERMINADO. Antes contaba todos
             # los que tuvieran FECHA DE FINALIZACIÓN, pero algunos proyectos en
             # otros estados (p. ej. PARA CIERRE) también la tienen registrada y
             # se colaban en la clasificación.
@@ -313,7 +367,7 @@ def procesar(file_bytes, fecha_corte_override=None):
                 (~pl.col("FECHA DE FINALIZACIÓN").is_null())
             ).then(
                 (pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA DE FINALIZACIÓN")).dt.total_days()
-            ).otherwise(None).alias("hito_5_val"),
+            ).otherwise(None).alias("hito_6_val"),
             # Suspendidos — basado en ESTADO CONTRATO
             pl.when(
                 pl.col("ESTADO CONTRATO").str.strip_chars().str.to_uppercase() == "SUSPENDIDO"
@@ -325,8 +379,8 @@ def procesar(file_bytes, fecha_corte_override=None):
             clasificar("hito_1_val", INTERVALOS["hito_1_val"]).alias("clasi_1"),
             clasificar("hito_2_val", INTERVALOS["hito_2_val"]).alias("clasi_2"),
             clasificar("hito_3_val", INTERVALOS["hito_3_val"]).alias("clasi_3"),
-            clasificar_hito4_meses("hito_4_val").alias("clasi_4"),
-            clasificar("hito_5_val", INTERVALOS["hito_5_val"]).alias("clasi_5"),
+            clasificar_hito4_meses("hito_5_val").alias("clasi_5"),
+            clasificar("hito_6_val", INTERVALOS["hito_6_val"]).alias("clasi_6"),
         )
     )
     return df
@@ -625,8 +679,10 @@ def procesar_contratos(file_bytes):
         "CONTRATO OBJETO",
         "CONTRATO VALOR TOTAL",
         "ESTADO CONTRATO",
-        "FECHA FINAL REAL",   # ← Fecha de terminación del contrato
+        "FECHA FINAL",        # ← Fecha de terminación programada del contrato
+        "FECHA FINAL REAL",   # ← Fecha de terminación real del contrato
     ]
+    # "FECHA FINAL" puede no existir en exports antiguos; se trata como opcional.
     diag = []
     try:
         # ── Leer raw sin encabezado (GESPROY exporta 2 filas de meta antes de los datos) ──
@@ -682,12 +738,18 @@ def procesar_contratos(file_bytes):
 
         # ── Verificar columnas necesarias ────────────────────────────────────
         cols_presentes = set(df.columns)
-        faltantes = [c for c in COLS_CONTRATOS if c not in cols_presentes]
+        # "FECHA FINAL" es opcional — algunos exports de GESPROY no la incluyen.
+        _opcionales_cttos = {"FECHA FINAL"}
+        faltantes = [c for c in COLS_CONTRATOS
+                     if c not in cols_presentes and c not in _opcionales_cttos]
         if faltantes:
             diag.append(f"ERROR: columnas faltantes: {faltantes}")
             diag.append(f"Columnas disponibles: {sorted(cols_presentes)}")
             return None, " | ".join(diag)
 
+        # Si "FECHA FINAL" no existe, agregamos columna null para mantener schema.
+        if "FECHA FINAL" not in df.columns:
+            df = df.with_columns(pl.lit(None).cast(pl.Utf8).alias("FECHA FINAL"))
         df = df.select(COLS_CONTRATOS)
 
         # ── Limpieza ─────────────────────────────────────────────────────────
@@ -738,27 +800,28 @@ def procesar_contratos(file_bytes):
             .alias("ESTADO CONTRATO")
         )
 
-        # 7. FECHA FINAL REAL → pl.Date (intenta varios formatos comunes).
+        # 7. Parseo de fechas (FECHA FINAL + FECHA FINAL REAL) → pl.Date.
         #    Si la celda viene vacía o ilegible, queda como null y luego
         #    se muestra como "—" en _contratos_panel.
-        if "FECHA FINAL REAL" in df.columns:
-            cleaned = (
-                pl.col("FECHA FINAL REAL")
-                .cast(pl.Utf8, strict=False)
-                .str.replace_all(r"[\n\r\t]", " ")
-                .str.strip_chars()
-            )
-            df = df.with_columns(
-                pl.coalesce([
-                    cleaned.str.to_date("%d/%m/%Y",              strict=False),
-                    cleaned.str.to_date("%Y-%m-%d",              strict=False),
-                    cleaned.str.to_date("%m/%d/%Y",              strict=False),
-                    cleaned.str.to_date("%d-%m-%Y",              strict=False),
-                    cleaned.str.to_datetime("%Y-%m-%dT%H:%M:%S", strict=False).dt.date(),
-                    cleaned.str.to_datetime("%Y-%m-%d %H:%M:%S", strict=False).dt.date(),
-                    cleaned.str.to_datetime("%d/%m/%Y %H:%M:%S", strict=False).dt.date(),
-                ]).alias("FECHA FINAL REAL")
-            )
+        for _fc in ("FECHA FINAL", "FECHA FINAL REAL"):
+            if _fc in df.columns:
+                cleaned = (
+                    pl.col(_fc)
+                    .cast(pl.Utf8, strict=False)
+                    .str.replace_all(r"[\n\r\t]", " ")
+                    .str.strip_chars()
+                )
+                df = df.with_columns(
+                    pl.coalesce([
+                        cleaned.str.to_date("%d/%m/%Y",              strict=False),
+                        cleaned.str.to_date("%Y-%m-%d",              strict=False),
+                        cleaned.str.to_date("%m/%d/%Y",              strict=False),
+                        cleaned.str.to_date("%d-%m-%Y",              strict=False),
+                        cleaned.str.to_datetime("%Y-%m-%dT%H:%M:%S", strict=False).dt.date(),
+                        cleaned.str.to_datetime("%Y-%m-%d %H:%M:%S", strict=False).dt.date(),
+                        cleaned.str.to_datetime("%d/%m/%Y %H:%M:%S", strict=False).dt.date(),
+                    ]).alias(_fc)
+                )
 
         return (df if df.height > 0 else None), " | ".join(diag)
     except Exception as e:
@@ -768,14 +831,14 @@ def procesar_contratos(file_bytes):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# DESCENTRALIZADAS — cálculo de hitos (1-4, sin Hito 5: no hay FECHA DE FINALIZACIÓN)
+# DESCENTRALIZADAS — cálculo de hitos (1-4, sin Hito 6: no hay FECHA DE FINALIZACIÓN)
 # ─────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=False)
 def procesar_descentralizadas_hitos(file_bytes, fecha_corte_override=None):
     """
     Lee la tabla OtrosEjecutoresDescentralizadas y devuelve un DataFrame con
     los hitos calculados (1-4 únicamente — esta tabla no contiene
-    FECHA DE FINALIZACIÓN así que no aplica el Hito 5).
+    FECHA DE FINALIZACIÓN así que no aplica el Hito 6).
     Agrupa lógicamente por EJECUTOR (no ENTIDAD O SECRETARIA).
 
     fecha_corte_override : date | None
@@ -797,11 +860,12 @@ def procesar_descentralizadas_hitos(file_bytes, fecha_corte_override=None):
     cast_exprs = _cast_dates_exprs(df, DATE_COLS_DESCENT)
 
     # Columnas opcionales — incluimos COMENTARIOS CALIFICACIÓN para mostrar
-    # como tooltip al pasar el cursor sobre el estado del proyecto.
+    # como tooltip al pasar el cursor sobre el estado del proyecto, y SECTOR
+    # para que la tabla de proyectos pueda filtrar y mostrar el sector.
     extra_cols = [c for c in (AVANCE_FISICO_OTROS, AVANCE_FINANCIERO,
                               "NOMBRE DEL PROYECTO", "ESTADO CONTRATO",
                               "CPI", "SPI", "COMENTARIOS CALIFICACIÓN",
-                              "MUNICIPIOS") if c in df.columns]
+                              "SECTOR", "MUNICIPIOS") if c in df.columns]
 
     base_cols = ["EJECUTOR", "BPIN"]
     if "NOMBRE DEL PROYECTO" in df.columns:
@@ -810,7 +874,7 @@ def procesar_descentralizadas_hitos(file_bytes, fecha_corte_override=None):
     select_cols = base_cols + [c for c in (AVANCE_FISICO_OTROS, AVANCE_FINANCIERO,
                                            "ESTADO CONTRATO", "CPI", "SPI",
                                            "COMENTARIOS CALIFICACIÓN",
-                                           "MUNICIPIOS") if c in df.columns]
+                                           "SECTOR", "MUNICIPIOS") if c in df.columns]
     select_cols += [c for c in DATE_COLS_DESCENT if c in df.columns]
 
     df = (
@@ -826,7 +890,7 @@ def procesar_descentralizadas_hitos(file_bytes, fecha_corte_override=None):
             pl.lit(fecha_corte_override).cast(pl.Date).alias("FECHA DE CORTE GESPROY")
         )
 
-    # Hitos — mismas fórmulas que Departamento, pero sin Hito 5
+    # Hitos — mismas fórmulas que Departamento, pero sin Hito 6
     # Regla de no duplicidad H1/H2: si el proyecto tiene apertura del primer
     # proceso, va al Hito 2 únicamente.
     hito_exprs = []
@@ -886,7 +950,7 @@ def procesar_descentralizadas_hitos(file_bytes, fecha_corte_override=None):
                 (pl.col("HORIZONTE DEL PROYECTO") <= pl.col("FECHA DE CORTE GESPROY"))
             ).then(
                 (pl.col("FECHA DE CORTE GESPROY") - pl.col("HORIZONTE DEL PROYECTO")).dt.total_days()
-            ).otherwise(None).alias("hito_4_val")
+            ).otherwise(None).alias("hito_5_val")
         )
 
     # Suspendidos / Para cierre
@@ -911,8 +975,8 @@ def procesar_descentralizadas_hitos(file_bytes, fecha_corte_override=None):
         clasi_exprs.append(clasificar("hito_2_val", INTERVALOS["hito_2_val"]).alias("clasi_2"))
     if "hito_3_val" in df.columns:
         clasi_exprs.append(clasificar("hito_3_val", INTERVALOS["hito_3_val"]).alias("clasi_3"))
-    if "hito_4_val" in df.columns:
-        clasi_exprs.append(clasificar_hito4_meses("hito_4_val").alias("clasi_4"))
+    if "hito_5_val" in df.columns:
+        clasi_exprs.append(clasificar_hito4_meses("hito_5_val").alias("clasi_5"))
     if clasi_exprs:
         df = df.with_columns(clasi_exprs)
 

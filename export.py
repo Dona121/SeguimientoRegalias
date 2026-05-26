@@ -45,7 +45,7 @@ SEM_FILL = {
     "16-30":   ("FEF3C7", "92400E"),
     "31-45":   ("FFEDD5", "9A3412"),
     ">45":     ("1E293B", "F1F5F9"),
-    # Hito 4 (meses)
+    # Hito 5 (meses)
     "0-1":     ("D1FAE5", "065F46"),
     "1.1-3":   ("FEF3C7", "92400E"),
     "3.1-6":   ("FFEDD5", "9A3412"),
@@ -152,10 +152,10 @@ def _avance_pct(v):
 
 def _clasificar_h(hito_col, dias_num):
     """Clasifica un valor (en días) según los intervalos del hito.
-    H4 se evalúa en meses (días/30) — el resto en días."""
+    H5 se evalúa en meses (días/30) — el resto en días."""
     if dias_num is None:
         return None
-    if hito_col == "hito_4_val":
+    if hito_col == "hito_5_val":
         m = dias_num / 30.0
         if m <= 1: return "0-1"
         if m <= 3: return "1.1-3"
@@ -174,7 +174,7 @@ ALERTAS_NRN = {
     "hito_1_val": ["101-150", "151-180", ">180"],
     "hito_2_val": ["101-150", "151-180", ">180"],
     "hito_3_val": ["16-30", "31-45", ">45"],
-    "hito_4_val": ["1.1-3", "3.1-6", ">6"],
+    "hito_5_val": ["1.1-3", "3.1-6", ">6"],
 }
 
 REPORTE_CONFIG = [
@@ -183,7 +183,7 @@ REPORTE_CONFIG = [
     {"estado": "CONTRATADO SIN ACTA DE INICIO", "label": "Contratado sin acta de inicio",
      "hitos": [("clasi_3", "hito_3_val")]},
     {"estado": "CONTRATADO EN EJECUCIÓN", "label": "Contratado en ejecución",
-     "hitos": [("clasi_4", "hito_4_val")]},
+     "hitos": [("clasi_5", "hito_5_val")]},
 ]
 
 def _comentario_alerta(estado_up, conteos, n_total):
@@ -221,12 +221,12 @@ DATE_COLS_DESCENT = {
     "FECHA SUSCRIPCION", "FECHA ACTA INICIO", "HORIZONTE DEL PROYECTO",
     "FECHA DE CORTE GESPROY",
 }
-HITO_COLS_DPTO    = {"hito_1_val", "hito_2_val", "hito_3_val", "hito_4_val", "hito_5_val"}
-HITO_COLS_DESCENT = {"hito_1_val", "hito_2_val", "hito_3_val", "hito_4_val"}
-CLASI_COLS = {"clasi_1", "clasi_2", "clasi_3", "clasi_4", "clasi_5"}
+HITO_COLS_DPTO    = {"hito_1_val", "hito_2_val", "hito_3_val", "hito_4_val", "hito_5_val", "hito_6_val"}
+HITO_COLS_DESCENT = {"hito_1_val", "hito_2_val", "hito_3_val", "hito_5_val"}
+CLASI_COLS = {"clasi_1", "clasi_2", "clasi_3", "clasi_5", "clasi_6"}
 HITO_BY_CLASI = {"clasi_1":"hito_1_val", "clasi_2":"hito_2_val",
-                 "clasi_3":"hito_3_val", "clasi_4":"hito_4_val",
-                 "clasi_5":"hito_5_val"}
+                 "clasi_3":"hito_3_val", "clasi_5":"hito_5_val",
+                 "clasi_6":"hito_6_val"}
 PCT_COLS = {"AVANCE FISICO", "AVANCE FÍSICO", "AVANCE FINANCIERO"}
 
 def _write_date(cell, v, bg):
@@ -260,10 +260,11 @@ def _sheet_resumen_dpto(wb, df_agr):
         ("H2 alerta",                            10),
         ("H3 días\nContratado\nsin acta",        13),
         ("H3 alerta",                            10),
-        ("H4 meses\nEn ejecución\nrezagado",     13),
-        ("H4 alerta",                            10),
-        ("H5 días\nTerminados",                  13),
+        ("H4 días\nEn ejecución",                13),
+        ("H5 meses\nEn ejecución\nrezagado",     13),
         ("H5 alerta",                            10),
+        ("H6 días\nTerminados",                  13),
+        ("H6 alerta",                            10),
         ("Suspendidos",                          11),
         ("Para cierre",                          11),
         ("Total",                                 9),
@@ -272,7 +273,7 @@ def _sheet_resumen_dpto(wb, df_agr):
     _title_row(ws,
                "Resumen por Entidad — Departamento de Sucre",
                f"Generado: {date.today().strftime('%d/%m/%Y')} · "
-               "Promedios por hito (H4 en meses) · Niveles de alerta como semáforo",
+               "Promedios por hito (H5 en meses) · Niveles de alerta como semáforo",
                NCOLS)
     ws.row_dimensions[3].height = 6
     for i, (label, w) in enumerate(cols, 1):
@@ -284,12 +285,13 @@ def _sheet_resumen_dpto(wb, df_agr):
         ws.cell(5, 1, "Sin datos disponibles").font = _font(italic=True, color="9CA3AF")
         return
 
+    # Hitos con semáforo (clasi): H1, H2, H3, H5, H6
     HITO_KEYS = [
         ("Hito 1 (días)", "hito_1_val"),
         ("Hito 2 (días)", "hito_2_val"),
         ("Hito 3 (días)", "hito_3_val"),
-        ("Hito 4 (días)", "hito_4_val"),
         ("Hito 5 (días)", "hito_5_val"),
+        ("Hito 6 (días)", "hito_6_val"),
     ]
 
     for r_i, row in enumerate(df_agr.to_dicts(), 5):
@@ -298,11 +300,25 @@ def _sheet_resumen_dpto(wb, df_agr):
         ent = row.get("ENTIDAD O SECRETARIA") or ""
         _data_cell(ws.cell(r_i, 1), ent, bg=bg, bold=True, color=AZUL_MED)
         col = 2
-        for src_col, hito_col in HITO_KEYS:
+        # H1, H2, H3 — valor + semáforo
+        for src_col, hito_col in HITO_KEYS[:3]:
             val = row.get(src_col)
             num = round(float(val), 1) if val is not None and str(val) != "nan" else None
-            # H4 mostrado en meses para ser consistente con la app
-            shown = round(num / 30.0, 1) if (hito_col == "hito_4_val" and num is not None) else num
+            _data_cell(ws.cell(r_i, col), num, bg=bg, center=True, fmt="#,##0.0")
+            col += 1
+            clasi = _clasificar_h(hito_col, num) if num is not None else None
+            _sem_cell(ws.cell(r_i, col), clasi, bg_default=bg, hito_col=hito_col)
+            col += 1
+        # H4 — En ejecución (sin semáforo): solo valor
+        val4 = row.get("Hito 4 (días)")
+        num4 = round(float(val4), 1) if val4 is not None and str(val4) != "nan" else None
+        _data_cell(ws.cell(r_i, col), num4, bg=bg, center=True, fmt="#,##0.0")
+        col += 1
+        # H5 (meses) + H6 — valor + semáforo
+        for src_col, hito_col in HITO_KEYS[3:]:
+            val = row.get(src_col)
+            num = round(float(val), 1) if val is not None and str(val) != "nan" else None
+            shown = round(num / 30.0, 1) if (hito_col == "hito_5_val" and num is not None) else num
             _data_cell(ws.cell(r_i, col), shown, bg=bg, center=True, fmt="#,##0.0")
             col += 1
             clasi = _clasificar_h(hito_col, num) if num is not None else None
@@ -348,7 +364,15 @@ def _sheet_detalle_dpto(wb, df_f):
         ("Fecha\nfinalización",          12, "FECHA DE FINALIZACIÓN"),
         ("Fecha corte\nGESPROY",         12, "FECHA DE CORTE GESPROY"),
     ]
-    for n, etiqueta in [(1,"H1"), (2,"H2"), (3,"H3"), (4,"H4"), (5,"H5")]:
+    # H1, H2, H3 — días + alerta + mensaje
+    for n, etiqueta in [(1, "H1"), (2, "H2"), (3, "H3")]:
+        base.append((f"{etiqueta}\ndías",       7, f"hito_{n}_val"))
+        base.append((f"{etiqueta}\nalerta",     9, f"clasi_{n}"))
+        base.append((f"{etiqueta} · Mensaje", 36, f"_msg_{n}"))
+    # H4 — En ejecución (sin semáforo): solo días
+    base.append(("H4\ndías\nEn ejecución", 9, "hito_4_val"))
+    # H5 (meses) y H6 — días + alerta + mensaje
+    for n, etiqueta in [(5, "H5"), (6, "H6")]:
         base.append((f"{etiqueta}\ndías",       7, f"hito_{n}_val"))
         base.append((f"{etiqueta}\nalerta",     9, f"clasi_{n}"))
         base.append((f"{etiqueta} · Mensaje", 36, f"_msg_{n}"))
@@ -374,7 +398,8 @@ def _sheet_detalle_dpto(wb, df_f):
         ws.row_dimensions[r_i].height = 38
         # Pre-calcular mensajes por hito y flags
         msgs = {}
-        for n in (1, 2, 3, 4, 5):
+        # Solo hitos con semáforo (no incluye H4 = En ejecución).
+        for n in (1, 2, 3, 5, 6):
             cv = row.get(f"clasi_{n}")
             cv_s = str(cv) if cv and str(cv) not in ("None", "nan", "") else None
             hk = HITO_BY_CLASI[f"clasi_{n}"]
@@ -514,8 +539,8 @@ def _sheet_resumen_descent(wb, df_descent):
         ("H2 alerta",                            10),
         ("H3 días\nContratado\nsin acta",        13),
         ("H3 alerta",                            10),
-        ("H4 meses\nEn ejecución\nrezagado",     13),
-        ("H4 alerta",                            10),
+        ("H5 meses\nEn ejecución\nrezagado",     13),
+        ("H5 alerta",                            10),
         ("Suspendidos",                          11),
         ("Para cierre",                          11),
         ("Total",                                 9),
@@ -524,7 +549,7 @@ def _sheet_resumen_descent(wb, df_descent):
     _title_row(ws,
                "Resumen por Ejecutor — Descentralizadas",
                f"Generado: {date.today().strftime('%d/%m/%Y')} · "
-               "Hitos 1-4 (H5 no aplica: la tabla no tiene fecha de finalización)",
+               "Hitos 1, 2, 3 y 5 (H4 requiere contratos · H6 no aplica: sin fecha de finalización)",
                NCOLS)
     ws.row_dimensions[3].height = 6
     for i, (label, w) in enumerate(cols, 1):
@@ -536,7 +561,7 @@ def _sheet_resumen_descent(wb, df_descent):
         ws.cell(5, 1, "Sin datos disponibles").font = _font(italic=True, color="9CA3AF")
         return
 
-    hito_cols = [c for c in ("hito_1_val", "hito_2_val", "hito_3_val", "hito_4_val")
+    hito_cols = [c for c in ("hito_1_val", "hito_2_val", "hito_3_val", "hito_5_val")
                  if c in df_descent.columns]
     aggs = []
     for hk in hito_cols:
@@ -557,10 +582,10 @@ def _sheet_resumen_descent(wb, df_descent):
         for hk_label, hk_col in [("Hito 1 (días)", "hito_1_val"),
                                   ("Hito 2 (días)", "hito_2_val"),
                                   ("Hito 3 (días)", "hito_3_val"),
-                                  ("Hito 4 (días)", "hito_4_val")]:
+                                  ("Hito 5 (días)", "hito_5_val")]:
             v = row.get(hk_label)
             num = round(float(v), 1) if v is not None and str(v) != "nan" else None
-            shown = round(num / 30.0, 1) if (hk_col == "hito_4_val" and num is not None) else num
+            shown = round(num / 30.0, 1) if (hk_col == "hito_5_val" and num is not None) else num
             _data_cell(ws.cell(r_i, col), shown, bg=bg, center=True, fmt="#,##0.0")
             col += 1
             clasi = _clasificar_h(hk_col, num) if num is not None else None
@@ -606,7 +631,9 @@ def _sheet_detalle_descent(wb, df_descent):
     ]:
         if fcol in df_descent.columns:
             base.append((flbl, fw, fcol))
-    for n, etiqueta in [(1,"H1"), (2,"H2"), (3,"H3"), (4,"H4")]:
+    # Descentralizadas tiene H1, H2, H3 y H5 — NO tiene H4 (requiere contratos)
+    # ni H6 (sin fecha de finalización).
+    for n, etiqueta in [(1, "H1"), (2, "H2"), (3, "H3"), (5, "H5")]:
         if f"hito_{n}_val" in df_descent.columns:
             base.append((f"{etiqueta}\ndías",       7, f"hito_{n}_val"))
             if f"clasi_{n}" in df_descent.columns:
@@ -631,7 +658,7 @@ def _sheet_detalle_descent(wb, df_descent):
         bg = GRIS_ALT if r_i % 2 == 0 else BLANCO
         ws.row_dimensions[r_i].height = 36
         msgs = {}
-        for n in (1, 2, 3, 4):
+        for n in (1, 2, 3, 5):
             cv = row.get(f"clasi_{n}")
             cv_s = str(cv) if cv and str(cv) not in ("None", "nan", "") else None
             hk = HITO_BY_CLASI.get(f"clasi_{n}")

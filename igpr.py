@@ -318,6 +318,35 @@ def _resumen_general(df: pl.DataFrame) -> None:
         unsafe_allow_html=True,
     )
 
+    # ── Diagnóstico del descuento 2026 (panel colapsado) ────────────────
+    # Muestra cuántos proyectos del trimestre tuvieron al menos una situación
+    # marcada SI, junto con el promedio antes y después del descuento de
+    # 10 puntos. Si "PUNTAJE_ORIGINAL" no está, no se aplicó descuento.
+    if "PUNTAJE_ORIGINAL" in df.columns:
+        df_2026 = df.filter(pl.col("VIGENCIA") == 2026)
+        if df_2026.height > 0:
+            with st.expander("Diagnóstico · Descuento por situaciones (vigencia 2026)", expanded=False):
+                diag = (
+                    df_2026
+                    .group_by(["PERIODO", "_orden_trim"], maintain_order=True)
+                    .agg(
+                        pl.col("PUNTAJE_ORIGINAL").mean().round(2).alias("Promedio_sin_descuento"),
+                        pl.col("PUNTAJE").mean().round(2).alias("Promedio_con_descuento"),
+                        (pl.col("PUNTAJE") != pl.col("PUNTAJE_ORIGINAL"))
+                          .sum().alias("Proyectos_con_situacion"),
+                        pl.col("BPIN").n_unique().alias("Total_proyectos"),
+                    )
+                    .sort("_orden_trim")
+                    .drop("_orden_trim")
+                )
+                st.dataframe(diag.to_pandas(), use_container_width=True, hide_index=True)
+                st.caption(
+                    "El descuento se aplica por proyecto cuando al menos una "
+                    "de las 3 columnas (Inconsistencias / Irregularidades graves / "
+                    "Modificación de reporte) está marcada como SI. Cada proyecto "
+                    "afectado recibe −10 puntos (clamp en 0)."
+                )
+
 
 def _detalle_trimestre(df: pl.DataFrame) -> None:
     """Selector de trimestre + tabla de proyectos con desplegable por entidad."""
@@ -568,7 +597,7 @@ def _metodologia() -> None:
             <div class='lab'>Escala de medición</div>
             <h4>0 a 100 puntos</h4>
             <ul>
-              <li><b>≥ 60</b> · ADECUADO (Departamento Sucre, Capacidad 1)</li>
+              <li><b>≥ 60</b> · ADECUADO (Departamento Sucre, Capacidad 2)</li>
               <li><b>&lt; 60</b> · NO ADECUADO</li>
               <li>Resultado de entidad: promedio simple de los proyectos medidos.</li>
               <li>Proyecto: <code>Eficiencia × Ponderador Reporte Oportuno</code>.</li>
@@ -730,49 +759,22 @@ def render_igpr(matriz_bytes: bytes | None) -> None:
         )
         return
 
-    # KPIs globales
-    prom_global = df.select(pl.col("PUNTAJE").mean()).item() or 0.0
-    n_proy = df.select(pl.col("BPIN").n_unique()).item() or 0
-    n_periodos = df.select(pl.col("PERIODO").n_unique()).item() or 0
-
-    # Mejor periodo
-    promedios_per = resumen_por_periodo(df)
-    if promedios_per.is_empty():
-        mejor_label, mejor_val = "—", 0.0
-    else:
-        mejor = promedios_per.sort("PROMEDIO", descending=True, nulls_last=True).row(0, named=True)
-        mejor_label = _periodo_label(mejor["VIGENCIA"], mejor["TRIMESTRE EVALUADO"])
-        mejor_val = mejor["PROMEDIO"] or 0.0
-
-    pct_adec = (
-        df.filter(pl.col("PUNTAJE") >= UMBRAL_ADECUADO_DEPARTAMENTO).height / df.height * 100
-        if df.height else 0
-    )
-
-    st.markdown(
-        "<div class='igpr-kpi-row'>"
-        + _kpi_card("Promedio global", f"{prom_global:.1f}",
-                    f"Promedio simple de los {n_periodos} trimestres", "is-promedio")
-        + _kpi_card("Mejor periodo", f"{mejor_val:.1f}", mejor_label, "is-mejor")
-        + _kpi_card("Proyectos medidos", f"{n_proy}",
-                    "BPIN únicos en los trimestres disponibles", "is-proyectos")
-        + _kpi_card("% Adecuados", f"{pct_adec:.0f}%",
-                    f"Mediciones con puntaje ≥ {int(UMBRAL_ADECUADO_DEPARTAMENTO)}", "is-adecuado")
-        + "</div>",
-        unsafe_allow_html=True,
-    )
-
+    # ── Tabs ─────────────────────────────────────────────────────────────
     tabs = st.tabs([
         "Resumen general",
         "Detalle por trimestre",
         "Detalle por entidad",
         "Metodología",
     ])
+
     with tabs[0]:
         _resumen_general(df)
+
     with tabs[1]:
         _detalle_trimestre(df)
+
     with tabs[2]:
         _detalle_entidad(df)
+
     with tabs[3]:
         _metodologia()

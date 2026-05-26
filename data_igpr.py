@@ -84,8 +84,15 @@ TRIMESTRES_IGPR: list[dict] = [
         "col_puntaje": "IGPR PROYECTO FINAL",
         "trimestre":   "PRIMER TRIMESTRE",
         "vigencia":    2026,
-        # La clasificación de plazo solo se reporta a partir de 2026.
-        "extras":      ["CLASIFICACIÓN PLAZO PARA EJECUCIÓN"],
+        # La clasificación de plazo y los flags de situaciones solo se reportan
+        # a partir de 2026. Si alguno de los 3 flags está en "SI", al puntaje
+        # del trimestre se le resta un 10%.
+        "extras":      [
+            "CLASIFICACIÓN PLAZO PARA EJECUCIÓN",
+            "INCONSISTENCIAS EN VISITAS",
+            "PROYECTOS CON PRESUNTAS IRREGULARIDADES GRAVES",
+            "MODIFICACIÓN REPORTE EJECUCIÓN",
+        ],
     },
 ]
 
@@ -288,15 +295,70 @@ def _procesar_un_trimestre(file_bytes: bytes,
           .cast(pl.Float64, strict=False)
     )
 
+    # ────────────────────────────────────────────────────────────────────
+    # Descuento por situaciones (solo aplica a la medición de 2026):
+    # si el proyecto reporta "SI" en CUALQUIERA de las 3 columnas
+    # (Inconsistencias, Irregularidades graves o Modificación de reporte),
+    # se considera que presentó una situación que afecta el puntaje y se le
+    # descuentan 10 puntos absolutos al puntaje del trimestre (clamp >= 0).
+    # ────────────────────────────────────────────────────────────────────
+    cols_situacion = [
+        "INCONSISTENCIAS EN VISITAS",
+        "PROYECTOS CON PRESUNTAS IRREGULARIDADES GRAVES",
+        "MODIFICACIÓN REPORTE EJECUCIÓN",
+    ]
+    cols_situacion_presentes = [c for c in cols_situacion if c in df.columns]
+    if cfg["vigencia"] >= 2026 and cols_situacion_presentes:
+        # Cada flag es 1 si la celda está marcada como SI (en cualquier casing
+        # o con tilde), 0 si está marcada como NO, y 0 también si viene null
+        # o con cualquier otro valor inesperado. Hacemos un compare por contains
+        # del literal "SI" después de normalizar (str + strip + upper), porque
+        # algunos exports traen variantes ("SI", "Si", "SÍ", "si", "SI ", etc.)
+        # y queremos ser tolerantes con todos.
+        for i, c in enumerate(cols_situacion_presentes):
+            norm = (
+                pl.col(c).cast(pl.Utf8, strict=False)
+                  .fill_null("")
+                  .str.strip_chars()
+                  .str.to_uppercase()
+                  .str.replace_all("Í", "I")
+            )
+            df = df.with_columns(
+                pl.when(norm == "SI").then(1).otherwise(0)
+                  .cast(pl.Int32)
+                  .alias(f"_situ_{i}")
+            )
+        df = df.with_columns(
+            pl.max_horizontal([f"_situ_{i}" for i in range(len(cols_situacion_presentes))])
+              .alias("PRESENTA ALGUNA SITUACION QUE AFECTA PUNTAJE")
+        )
+        # Guardamos el puntaje original y aplicamos −10 puntos absolutos al
+        # PUNTAJE de los proyectos con situación. Clampeamos en [0, 100].
+        df = df.with_columns(
+            pl.col("PUNTAJE").alias("PUNTAJE_ORIGINAL"),
+            pl.when(pl.col("PRESENTA ALGUNA SITUACION QUE AFECTA PUNTAJE") == 1)
+              .then((pl.col("PUNTAJE") - 10.0).clip(0.0, 100.0))
+              .otherwise(pl.col("PUNTAJE"))
+              .round(2)
+              .alias("PUNTAJE")
+        )
+        # Limpiamos columnas auxiliares.
+        df = df.drop([f"_situ_{i}" for i in range(len(cols_situacion_presentes))])
+
     # Join con catálogo de entidades por BPIN
     df = df.join(catalogo_entidades, on="BPIN", how="left")
 
     return df
 
 
+# Bump _CACHE_VERSION cuando cambie la lógica de cargar_igpr — eso fuerza
+# que Streamlit invalide el resultado guardado y re-ejecute la función.
+_CARGAR_IGPR_CACHE_VERSION = "v2-2026descuento10pts"
+
+
 @st.cache_data(show_spinner=False, ttl=3600)
-def cargar_igpr(matriz_bytes: bytes) -> pl.DataFrame:
-    """Descarga y consolida los 5 Excel del IGPR.
+def _cargar_igpr_impl_v2(matriz_bytes: bytes, cache_version: str) -> pl.DataFrame:
+    """Implementación real (con versión de cache). NO usar directamente.
 
     Parámetros
     ----------
@@ -354,7 +416,17 @@ def cargar_igpr(matriz_bytes: bytes) -> pl.DataFrame:
         pl.col("PUNTAJE").map_elements(clasificar_puntaje, return_dtype=pl.Utf8).alias("CATEGORIA"),
     )
 
+    # Diagnóstico — útil para verificar si el descuento se aplicó
+    if "PUNTAJE_ORIGINAL" in consolidado.columns:
+        n_situ = int((consolidado["PUNTAJE"] != consolidado["PUNTAJE_ORIGINAL"]).sum())
+        _log.info("IGPR: %d proyecto(s) recibieron descuento de -10 pts por situación", n_situ)
+
     return consolidado
+
+
+def cargar_igpr(matriz_bytes: bytes) -> pl.DataFrame:
+    """Wrapper público — pasa la versión de cache para invalidar cuando cambie la lógica."""
+    return _cargar_igpr_impl_v2(matriz_bytes, _CARGAR_IGPR_CACHE_VERSION)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

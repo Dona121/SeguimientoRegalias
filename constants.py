@@ -1797,8 +1797,8 @@ INTERVALOS = {
         ("31-45", 31, 45),
         (">45",   46, None),
     ],
-    # hito_4_val no usa INTERVALOS — se clasifica en meses en data.py
-    "hito_5_val": [
+    # hito_5_val no usa INTERVALOS — se clasifica en meses en data.py
+    "hito_6_val": [
         ("0-100",   0,   100),
         ("101-150", 101, 150),
         ("151-180", 151, 180),
@@ -1826,13 +1826,13 @@ SEMAFOROS = {
         "31-45": ("orange", "Rojo",    "Han transcurrido entre 31 y 45 días desde la suscripción sin acta de inicio. Situación crítica que requiere atención inmediata."),
         ">45":   ("black",  "Negro",   "Más de 45 días sin acta de inicio desde la suscripción del contrato. Requiere intervención urgente."),
     },
-    "hito_4_val": {
+    "hito_5_val": {
         "0-1":   ("green",  "Verde",   "Proyecto presenta horizonte vigente."),
         "1.1-3": ("yellow", "Naranja", "Proyecto con horizonte vencido entre 1 y 3 meses."),
         "3.1-6": ("orange", "Rojo",    "Proyecto con horizonte vencido mayor a 3 meses."),
         ">6":    ("black",  "Negro",   "Proyecto con horizonte vencido mayor a 6 meses."),
     },
-    "hito_5_val": {
+    "hito_6_val": {
         "0-100":   ("green",  "Verde",   "Proyecto dentro de los tiempos para pasar a estado 'Para cierre'."),
         "101-150": ("yellow", "Naranja", "Proyecto en alerta: más de 100 días desde su terminación sin pasar a 'Para cierre'."),
         "151-180": ("orange", "Rojo",    "Proyecto en alerta roja: más de 150 días desde su terminación."),
@@ -1857,7 +1857,7 @@ COLS_EVAL_LABELS = [
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
-# DESCENTRALIZADAS — fechas y columnas usadas para hitos (no incluye Hito 5
+# DESCENTRALIZADAS — fechas y columnas usadas para hitos (no incluye Hito 6
 # porque la tabla no tiene FECHA DE FINALIZACIÓN)
 # ─────────────────────────────────────────────────────────────────────────────
 DATE_COLS_DESCENT = [

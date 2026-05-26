@@ -102,6 +102,22 @@ HITOS_INFO = [
     },
     {
         "n": 4,
+        "titulo": "En ejecución",
+        "descripcion": "Días que un proyecto en ejecución lleva desde su acta de inicio, "
+                       "con su horizonte todavía vigente y sin contratos suspendidos. "
+                       "Solo aplica al Departamento (depende del archivo de contratos). "
+                       "No tiene semáforo.",
+        "estados":   ["CONTRATADO EN EJECUCIÓN"],
+        "condiciones": [
+            "Tiene fecha de acta de inicio",
+            "El horizonte del proyecto está vigente (horizonte ≥ fecha de corte)",
+            "Ningún contrato del proyecto está en estado SUSPENDIDO",
+        ],
+        "formula":     ("FECHA DE CORTE GESPROY", "FECHA ACTA INICIO", "días"),
+        "intervalos":  None,
+    },
+    {
+        "n": 5,
         "titulo": "En ejecución rezagado",
         "descripcion": "Meses que un proyecto en ejecución lleva con su horizonte vencido y sin avance.",
         "estados":   ["CONTRATADO EN EJECUCIÓN"],
@@ -110,10 +126,10 @@ HITOS_INFO = [
             "El horizonte del proyecto ya está vencido (horizonte ≤ fecha de corte)",
         ],
         "formula":     ("FECHA DE CORTE GESPROY", "HORIZONTE DEL PROYECTO", "meses"),
-        "intervalos":  "hito_4_val",
+        "intervalos":  "hito_5_val",
     },
     {
-        "n": 5,
+        "n": 6,
         "titulo": "Terminados pendientes de cierre",
         "descripcion": "Días que un proyecto terminado lleva sin pasar formalmente al estado 'Para cierre'.",
         "estados":   ["TERMINADO"],
@@ -122,7 +138,7 @@ HITOS_INFO = [
             "Tiene fecha de finalización registrada",
         ],
         "formula":     ("FECHA DE CORTE GESPROY", "FECHA DE FINALIZACIÓN", "días"),
-        "intervalos":  "hito_5_val",
+        "intervalos":  "hito_6_val",
     },
 ]
 
@@ -133,7 +149,7 @@ _GUIA_COLOR_CLS = {"green": "verde", "yellow": "naranja", "orange": "rojo", "bla
 def render_guia_hitos(incluir_h5: bool, fuente: str):
     """
     Renderiza la pestaña 'Guía de hitos' con cards por cada hito.
-      incluir_h5 : si la fuente actual permite calcular Hito 5
+      incluir_h5 : si la fuente actual permite calcular Hito 6
       fuente     : nombre del modelo ("Departamento" o "Descentralizadas")
     """
     # Encabezado
@@ -144,17 +160,17 @@ def render_guia_hitos(incluir_h5: bool, fuente: str):
     h5_disclaimer = (
         ""
         if incluir_h5
-        else (" Para esta fuente <strong>Hito 5 no aplica</strong> porque "
+        else (" Para esta fuente <strong>Hito 6 no aplica</strong> porque "
               "la tabla no incluye fecha de finalización.")
     )
     st.markdown(f"""
     <div class="guia-intro">
       <div class="guia-intro-title">¿Cómo se evalúan los proyectos?</div>
-      Cada proyecto se mide contra <strong>{6 if incluir_h5 else 5} hitos de gestión</strong>
-      según el estado en que se encuentra. El <strong>Hito 0</strong> es informativo y
-      solo reporta los días promedio para todos los proyectos sin contratar; los demás
-      hitos calculan el tiempo transcurrido entre dos fechas clave y lo clasifican en
-      un nivel de alerta (verde, naranja, rojo o negro) según el rango en el que caiga.{h5_disclaimer}
+      Cada proyecto se mide contra <strong>{7 if incluir_h5 else 6} hitos de gestión</strong>
+      según el estado en que se encuentra. Los <strong>Hitos 0 y 4</strong> son
+      informativos (sin semáforo) y reportan solo el promedio de días; los demás hitos
+      calculan el tiempo transcurrido entre dos fechas clave y lo clasifican en un
+      nivel de alerta (verde, naranja, rojo o negro) según el rango en el que caiga.{h5_disclaimer}
       <br><br>
       La <strong>fecha de corte GESPROY</strong> es la referencia temporal: por defecto
       viene del archivo cargado, pero puedes cambiarla a <em>la fecha de hoy</em> desde
@@ -166,8 +182,8 @@ def render_guia_hitos(incluir_h5: bool, fuente: str):
     flujo = [
         ("Sin contratar",              "Hitos 0, 1 y 2"),
         ("Contratado sin acta",        "Hito 3"),
-        ("Contratado en ejecución",    "Hito 4"),
-        ("Terminado",                  "Hito 5" if incluir_h5 else "no aplica"),
+        ("Contratado en ejecución",    "Hitos 4 y 5"),
+        ("Terminado",                  "Hito 6" if incluir_h5 else "no aplica"),
     ]
     flow_parts = ['<div class="guia-flow">']
     for i, (estado, hitos) in enumerate(flujo):
@@ -288,16 +304,28 @@ with st.sidebar:
     # la app, para que un usuario nuevo entienda cómo se calcula cada hito antes
     # de explorar los datos.
     st.markdown("<div class='sidebar-section'>Vista</div>", unsafe_allow_html=True)
+    # Internamente la opción sigue siendo "Municipios" (para no romper
+    # el resto del código que referencia esa cadena), pero al usuario le
+    # mostramos el label "Otros ejecutores" via format_func.
+    _VISTA_LABELS = {
+        "Guía de hitos":    "Guía de hitos",
+        "Departamento":     "Departamento",
+        "Descentralizadas": "Descentralizadas",
+        "Municipios":       "Otros ejecutores",
+        "Mapa":             "Mapa",
+        "IGPR":             "IGPR",
+    }
     vista = st.radio(
         "Vista",
-        ["Guía de hitos", "Departamento", "Descentralizadas", "Municipios", "Mapa", "IGPR"],
+        list(_VISTA_LABELS.keys()),
+        format_func=lambda k: _VISTA_LABELS[k],
         label_visibility="collapsed",
         key="vista_principal",
         help=(
             "Guía: introducción al cálculo de los hitos (vista por defecto).\n"
             "Departamento: Matriz de Seguimiento (hitos completos).\n"
-            "Descentralizadas: Hitos 1-4 + evaluación.\n"
-            "Municipios: solo listado de proyectos.\n"
+            "Descentralizadas: Hitos 1, 2, 3 y 5 + evaluación.\n"
+            "Otros ejecutores: listado de proyectos de los municipios.\n"
             "Mapa: visor geográfico de los proyectos por municipio.\n"
             "IGPR: Índice de Gestión de Proyectos de Regalías (DNP, Res. 4574/2025)."
         ),
@@ -521,6 +549,14 @@ df_contratos, _cttos_diag = (
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
+# HITO 4 — En ejecución (sin semáforo). Solo aplica al Departamento porque
+# necesita el archivo de contratos para descartar proyectos con al menos un
+# contrato suspendido. Se calcula DESPUÉS de cargar df_contratos.
+# ─────────────────────────────────────────────────────────────────────────────
+from data import aplicar_hito_4_en_ejecucion
+df = aplicar_hito_4_en_ejecucion(df, df_contratos)
+
+# ─────────────────────────────────────────────────────────────────────────────
 # FILTROS EN SIDEBAR
 # ─────────────────────────────────────────────────────────────────────────────
 HITOS = {
@@ -528,8 +564,9 @@ HITOS = {
     "H1 · Sin contratar sin apertura":    ("hito_1_val", "clasi_1"),
     "H2 · Sin contratar con apertura":    ("hito_2_val", "clasi_2"),
     "H3 · Contratado sin acta de inicio": ("hito_3_val", "clasi_3"),
-    "H4 · En ejecución rezagado":         ("hito_4_val", "clasi_4"),
-    "H5 · Proyectos terminados":          ("hito_5_val", "clasi_5"),
+    "H4 · En ejecución":                  ("hito_4_val", None),
+    "H5 · En ejecución rezagado":         ("hito_5_val", "clasi_5"),
+    "H6 · Proyectos terminados":          ("hito_6_val", "clasi_6"),
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -860,6 +897,7 @@ agrupacion = (
         pl.col("hito_3_val").mean().round(1).alias("Hito 3 (días)"),
         pl.col("hito_4_val").mean().round(1).alias("Hito 4 (días)"),
         pl.col("hito_5_val").mean().round(1).alias("Hito 5 (días)"),
+        pl.col("hito_6_val").mean().round(1).alias("Hito 6 (días)"),
         pl.col("Suspendidos").sum().alias("Suspendidos"),
         pl.col("Para cierre").sum().alias("Para cierre"),
         pl.len().alias("Total"),
@@ -867,7 +905,7 @@ agrupacion = (
     .sort("ENTIDAD O SECRETARIA")
 )
 
-_CLASI_COLS      = ["clasi_1", "clasi_2", "clasi_3", "clasi_4", "clasi_5"]
+_CLASI_COLS      = ["clasi_1", "clasi_2", "clasi_3", "clasi_5", "clasi_6"]
 clasi_por_entidad = _calcular_clasi_modal(df, _CLASI_COLS)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -936,9 +974,9 @@ if tab_resumen is not None:
             return "<td class='null-cell'>—</td>"
         clasi  = _clasificar_promedio(dias_val, clasi_key)
         hito_k = HITO_KEY_MAP.get(clasi_key)
-        # H4 se mide en meses (igual que sus intervalos de alerta y el tooltip);
+        # H5 se mide en meses (igual que sus intervalos de alerta y el tooltip);
         # el resto de hitos se mide en días.
-        if clasi_key == "clasi_4":
+        if clasi_key == "clasi_5":
             display = f"{dias_val/30.0:.1f} m"
         else:
             display = f"{dias_val:.1f} d"
@@ -960,8 +998,9 @@ if tab_resumen is not None:
             {hito_cell(row['Hito 1 (días)'], 'clasi_1')}
             {hito_cell(row['Hito 2 (días)'], 'clasi_2')}
             {hito_cell(row['Hito 3 (días)'], 'clasi_3')}
-            {hito_cell(row['Hito 4 (días)'], 'clasi_4')}
+            {hito_cell_sin_semaforo(row['Hito 4 (días)'])}
             {hito_cell(row['Hito 5 (días)'], 'clasi_5')}
+            {hito_cell(row['Hito 6 (días)'], 'clasi_6')}
             <td style="text-align:center;font-weight:500">{susp}</td>
             <td style="text-align:center;font-weight:500">{pc}</td>
             <td class="col-total">{int(row['Total'])}</td>
@@ -981,9 +1020,11 @@ if tab_resumen is not None:
             "Promedio de días entre la <b>Fecha de apertura del primer proceso</b> y la <b>Fecha de corte GESPROY</b>, sin firma del primer contrato.<br><br>Condición: Estado = SIN CONTRATAR con fecha de apertura registrada.")}
         {th("Contratado<br>sin acta de inicio", "Hito 3 · Contratado sin acta de inicio",
             "Promedio de días entre la <b>Fecha de suscripción</b> y la <b>Fecha de corte GESPROY</b>.<br><br>Condición: Estado = CONTRATADO SIN ACTA DE INICIO.<br><br>Semáforo: Verde 0–15 d · Naranja 16–30 d · Rojo 31–45 d · Negro &gt;45 d")}
-        {th("En ejecución<br>rezagado", "Hito 4 · En ejecución rezagado",
+        {th("En<br>ejecución", "Hito 4 · En ejecución",
+            "Promedio de días entre la <b>Fecha acta de inicio</b> y la <b>Fecha de corte GESPROY</b> para proyectos en ejecución con horizonte vigente y sin contratos suspendidos.<br><br>Este hito es informativo: no tiene clasificación de semáforo.")}
+        {th("En ejecución<br>rezagado", "Hito 5 · En ejecución rezagado",
             "Meses entre el <b>Horizonte del proyecto</b> y la <b>Fecha de corte GESPROY</b>.<br><br>Condición: Estado = CONTRATADO EN EJECUCIÓN, CPI = 0, SPI = 0 y horizonte vencido.")}
-        {th("Proyectos<br>terminados", "Hito 5 · Proyectos terminados",
+        {th("Proyectos<br>terminados", "Hito 6 · Proyectos terminados",
             "Promedio de días entre la <b>Fecha de finalización</b> y la <b>Fecha de corte GESPROY</b>.<br><br>Condición: Estado = TERMINADO y Fecha de finalización registrada.")}
         {th("Suspendidos", "Proyectos suspendidos", "Conteo de proyectos cuyo <b>Estado contrato</b> = SUSPENDIDO.")}
         {th("Para cierre", "Proyectos para cierre", "Conteo de proyectos con Estado = PARA CIERRE.")}
@@ -1055,7 +1096,7 @@ if tab_resumen is not None:
                     if es_hito_sin_semaforo:
                         clasi_v = None
                     elif dias_v is not None:
-                        if sel_hito_col_r == "hito_4_val":
+                        if sel_hito_col_r == "hito_5_val":
                             meses = dias_v / 30.0
                             if   meses <= 1: clasi_v = "0-1"
                             elif meses <= 3: clasi_v = "1.1-3"
@@ -1243,7 +1284,7 @@ if tab_proyectos is not None:
         </span>
         <span style="font-size:0.75rem;color:{C['muted']}">
             entidad &nbsp;·&nbsp; estado del proyecto &nbsp;·&nbsp;
-            estado del contrato &nbsp;·&nbsp; BPIN &nbsp;·&nbsp; nombre del proyecto
+            estado del contrato &nbsp;·&nbsp; responsable cargue &nbsp;·&nbsp; sector &nbsp;·&nbsp; BPIN &nbsp;·&nbsp; nombre del proyecto
         </span>
         <span style="margin-left:auto;font-size:0.7rem;color:{C['cian']};font-weight:600;white-space:nowrap">
             Puedes combinarlos
@@ -1269,7 +1310,7 @@ if tab_proyectos is not None:
                                            placeholder="Todos los estados",
                                            label_visibility="collapsed",
                                            key="ms_est_dpto")
-    fc4, fc5 = st.columns([1.4, 1.6])
+    fc4, fc5, fc6 = st.columns([1.4, 1.6, 1.4])
     with fc4:
         estados_cont_opts = sorted(df_f["ESTADO CONTRATO"].drop_nulls().unique().to_list())
         sel_cont_proy     = st.multiselect("Estado contrato", estados_cont_opts,
@@ -1287,6 +1328,16 @@ if tab_proyectos is not None:
             )
         else:
             sel_resp_proy = []
+    with fc6:
+        if "SECTOR" in df_f.columns:
+            sector_opts = sorted(df_f["SECTOR"].drop_nulls().unique().to_list())
+            sel_sector_proy = st.multiselect(
+                "Sector", sector_opts,
+                placeholder="Todos los sectores",
+                label_visibility="collapsed", key="ms_sector_dpto",
+            )
+        else:
+            sel_sector_proy = []
 
     # Columnas a seleccionar — incluye RESPONSABLE / AVANCE solo si existen
     _proy_cols = [
@@ -1295,10 +1346,10 @@ if tab_proyectos is not None:
         "FECHA APROBACIÓN PROYECTO", "FECHA DE APERTURA DEL PRIMER PROCESO",
         "FECHA SUSCRIPCION", "FECHA ACTA INICIO",
         "HORIZONTE DEL PROYECTO", "FECHA DE FINALIZACIÓN", "FECHA DE CORTE GESPROY",
-        "hito_1_val", "hito_2_val", "hito_3_val", "hito_4_val", "hito_5_val",
-        "clasi_1", "clasi_2", "clasi_3", "clasi_4", "clasi_5",
+        "hito_1_val", "hito_2_val", "hito_3_val", "hito_4_val", "hito_5_val", "hito_6_val",
+        "clasi_1", "clasi_2", "clasi_3", "clasi_5", "clasi_6",
     ]
-    for _opt in ("AVANCE FISICO", "AVANCE FINANCIERO", "RESPONSABLE CARGUE EN GESPROY"):
+    for _opt in ("AVANCE FISICO", "AVANCE FINANCIERO", "RESPONSABLE CARGUE EN GESPROY", "SECTOR"):
         if _opt in df_f.columns and _opt not in _proy_cols:
             _proy_cols.append(_opt)
 
@@ -1317,6 +1368,8 @@ if tab_proyectos is not None:
         df_proy = df_proy.filter(pl.col("RESPONSABLE CARGUE EN GESPROY").is_in(sel_resp_proy))
     if sel_cont_proy:
         df_proy = df_proy.filter(pl.col("ESTADO CONTRATO").is_in(sel_cont_proy))
+    if sel_sector_proy:
+        df_proy = df_proy.filter(pl.col("SECTOR").is_in(sel_sector_proy))
 
     df_proy  = df_proy.sort(["ENTIDAD O SECRETARIA", "NOMBRE PROYECTO"])
     n_proy   = df_proy.height
@@ -1367,6 +1420,7 @@ if tab_proyectos is not None:
             entidad  = html.escape(r.get("ENTIDAD O SECRETARIA") or "—")
             bpin     = html.escape(str(r.get("BPIN") or "—"))
             nombre   = html.escape(r.get("NOMBRE PROYECTO") or "—")
+            sector_d = html.escape(r.get("SECTOR") or "—")
             est_proy = r.get("ESTADO PROYECTO") or ""
             est_cont = r.get("ESTADO CONTRATO") or ""
             row_id   = f"proy-{idx}"
@@ -1396,6 +1450,7 @@ if tab_proyectos is not None:
                 <td class="proy-ent">{entidad}</td>
                 <td><span class="bpin-tag">{bpin}</span></td>
                 <td class="proy-nombre">{nombre}</td>
+                <td style="font-size:0.74rem;color:{C['muted']};white-space:normal">{sector_d}</td>
                 <td>{_estado_tooltip_html(est_proy, r)}</td>
                 <td>{_pill(est_cont, ESTADO_CONT_COLORS)}</td>
                 <td style="white-space:nowrap">
@@ -1405,18 +1460,19 @@ if tab_proyectos is not None:
                 </td>
             </tr>
             <tr class="ctto-detail-row" id="{row_id}">
-                <td colspan="6">{panel_html}</td>
+                <td colspan="7">{panel_html}</td>
             </tr>""")
 
         st.markdown(f"""
         <table class="proy-table">
         <thead><tr>
-            <th style="width:150px">Entidad / Secretaría</th>
-            <th style="width:120px">BPIN</th>
+            <th style="width:140px">Entidad / Secretaría</th>
+            <th style="width:110px">BPIN</th>
             <th>Nombre del proyecto</th>
-            <th style="width:190px">Estado proyecto</th>
-            <th style="width:165px">Estado contrato</th>
-            <th style="width:110px">Contratos</th>
+            <th style="width:130px">Sector</th>
+            <th style="width:175px">Estado proyecto</th>
+            <th style="width:150px">Estado contrato</th>
+            <th style="width:105px">Contratos</th>
         </tr></thead>
         <tbody>{"".join(rows_html_list)}</tbody>
         </table>
@@ -1668,7 +1724,7 @@ if tab_alertas is not None:
         "hito_1_val": ["101-150", "151-180", ">180"],
         "hito_2_val": ["101-150", "151-180", ">180"],
         "hito_3_val": ["16-30", "31-45", ">45"],
-        "hito_4_val": ["1.1-3", "3.1-6", ">6"],
+        "hito_5_val": ["1.1-3", "3.1-6", ">6"],
     }
 
     # Colores por nivel de alerta para los pills
@@ -1787,7 +1843,7 @@ if tab_alertas is not None:
         {
             "estado":      "CONTRATADO EN EJECUCIÓN",
             "label":       "Contratado en ejecución",
-            "hitos":       [("clasi_4", "hito_4_val", "H4 · En ejecución rezagado")],
+            "hitos":       [("clasi_5", "hito_5_val", "H5 · En ejecución rezagado")],
             "color_est":   (C["verde_medio"], "#d1fae5"),
         },
     ]
@@ -2106,8 +2162,8 @@ if False:
         "H1 · Sin contratar sin apertura":    ("hito_1_val", "clasi_1"),
         "H2 · Sin contratar con apertura":    ("hito_2_val", "clasi_2"),
         "H3 · Contratado sin acta de inicio": ("hito_3_val", "clasi_3"),
-        "H4 · En ejecución rezagado":         ("hito_4_val", "clasi_4"),
-        "H5 · Proyectos terminados":          ("hito_5_val", "clasi_5"),
+        "H5 · En ejecución rezagado":         ("hito_5_val", "clasi_5"),
+        "H6 · Proyectos terminados":          ("hito_6_val", "clasi_6"),
     }
     CLASI_OPTIONS_COM = {
         "Todos":   None,
@@ -2120,8 +2176,8 @@ if False:
         "H1 · Sin contratar sin apertura":    "proyectos sin contratar y sin apertura del proceso precontractual",
         "H2 · Sin contratar con apertura":    "proyectos sin contratar con proceso precontractual abierto",
         "H3 · Contratado sin acta de inicio": "proyectos contratados sin acta de inicio firmada",
-        "H4 · En ejecución rezagado":         "proyectos en ejecución con horizonte vencido",
-        "H5 · Proyectos terminados":          "proyectos terminados pendientes de cierre",
+        "H5 · En ejecución rezagado":         "proyectos en ejecución con horizonte vencido",
+        "H6 · Proyectos terminados":          "proyectos terminados pendientes de cierre",
     }
 
     st.markdown('<div class="com-card"><div class="com-card-title">Paso 1 &nbsp;·&nbsp; Seleccionar proyectos</div>', unsafe_allow_html=True)
@@ -2210,13 +2266,13 @@ if False:
                     "Este hito mide los días transcurridos desde la suscripción del contrato "
                     "hasta la fecha de corte GESPROY, sin que se haya firmado el acta de inicio.",
                 ),
-                "H4 · En ejecución rezagado": (
-                    "hito_4_val",
+                "H5 · En ejecución rezagado": (
+                    "hito_5_val",
                     "Este hito mide los meses de retraso del proyecto respecto a su horizonte "
                     "de ejecución previsto, bajo condición de CPI=0 y SPI=0.",
                 ),
-                "H5 · Proyectos terminados": (
-                    "hito_5_val",
+                "H6 · Proyectos terminados": (
+                    "hito_6_val",
                     "Este hito mide los días transcurridos desde la fecha de finalización "
                     "registrada del proyecto hasta la fecha de corte GESPROY.",
                 ),
@@ -2231,7 +2287,7 @@ if False:
                     mensaje_sem = ""
                     if alerta and hito_key_com in SEMAFOROS and alerta in SEMAFOROS[hito_key_com]:
                         _, _, mensaje_sem = SEMAFOROS[hito_key_com][alerta]
-                    es_h4 = com_hito_label == "H4 · En ejecución rezagado"
+                    es_h4 = com_hito_label == "H5 · En ejecución rezagado"
                     if d == d and d is not None:
                         d_str = f"{d/30:.1f} meses ({d:.0f} días)" if es_h4 else f"{d:.0f} días"
                     else:
@@ -2332,13 +2388,13 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
                 unsafe_allow_html=True)
     st.markdown(
         f"<div style='font-size:0.78rem;color:{C['muted']};margin-bottom:1rem'>"
-        "Cálculo de hitos 1 a 4 por ejecutor. <strong>Hito 5 no aplica</strong> "
+        "Cálculo de hitos 1, 2, 3 y 5 por ejecutor. <strong>Hito 6 no aplica</strong> "
         "porque la tabla de Descentralizadas no contiene fecha de finalización.</div>",
         unsafe_allow_html=True,
     )
 
     # Agregar promedios por EJECUTOR
-    _hito_cols_present = [c for c in ("hito_0_val","hito_1_val","hito_2_val","hito_3_val","hito_4_val")
+    _hito_cols_present = [c for c in ("hito_0_val","hito_1_val","hito_2_val","hito_3_val","hito_5_val")
                           if c in df_descent_hitos.columns]
     _agg_exprs = []
     for hk in _hito_cols_present:
@@ -2361,7 +2417,7 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
             return "<td class='null-cell'>—</td>"
         clasi  = _clasificar_promedio(dias_val, clasi_key)
         hito_k = HITO_KEY_MAP.get(clasi_key)
-        if clasi_key == "clasi_4":
+        if clasi_key == "clasi_5":
             display = f"{dias_val/30.0:.1f} m"
         else:
             display = f"{dias_val:.1f} d"
@@ -2382,7 +2438,9 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
         cells = ""
         if _has_h0_descent:
             cells += _hito_cell_d_sin_semaforo(row.get("Hito 0 (días)"))
-        for n, ck in [("1","clasi_1"),("2","clasi_2"),("3","clasi_3"),("4","clasi_4")]:
+        # Descentralizadas NO tiene H4 (En ejecución, sin semáforo) porque
+        # ese hito requiere el archivo de contratos del Departamento.
+        for n, ck in [("1","clasi_1"),("2","clasi_2"),("3","clasi_3"),("5","clasi_5")]:
             cells += _hito_cell_d(row.get(f"Hito {n} (días)"), ck)
         rows_html_d += (
             f"<tr><td class='entidad-name'>{ent}</td>{cells}"
@@ -2410,7 +2468,7 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
             "Promedio de días entre la <b>Fecha de apertura del primer proceso</b> y la <b>Fecha de corte GESPROY</b>.")}
         {th("Contratado<br>sin acta de inicio", "Hito 3",
             "Promedio de días entre la <b>Fecha de suscripción</b> y la <b>Fecha de corte GESPROY</b>.")}
-        {th("En ejecución<br>rezagado", "Hito 4",
+        {th("En ejecución<br>rezagado", "Hito 5",
             "Meses entre el <b>Horizonte del proyecto</b> y la <b>Fecha de corte GESPROY</b>.")}
         {th("Suspendidos", "Suspendidos", "Conteo por <b>ESTADO CONTRATO = SUSPENDIDO</b>.")}
         {th("Para cierre", "Para cierre", "Conteo de proyectos con <b>Estado = PARA CIERRE</b>.")}
@@ -2435,7 +2493,7 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
         "H1 · Sin contratar sin apertura":    ("hito_1_val", "clasi_1"),
         "H2 · Sin contratar con apertura":    ("hito_2_val", "clasi_2"),
         "H3 · Contratado sin acta de inicio": ("hito_3_val", "clasi_3"),
-        "H4 · En ejecución rezagado":         ("hito_4_val", "clasi_4"),
+        "H5 · En ejecución rezagado":         ("hito_5_val", "clasi_5"),
     }
     # Solo ofrecer hitos que estén calculados en el dataframe
     HITOS_D_OPTS = {k: v for k, v in HITOS_D_OPTS.items() if v[0] in df_descent_hitos.columns}
@@ -2483,7 +2541,7 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
                 sub  = df_det_d.filter(pl.col("EJECUTOR") == ejecutor)
                 prom = sub[sel_hito_col_d].mean()
                 n    = sub.height
-                if sel_hito_col_d == "hito_4_val" and prom is not None:
+                if sel_hito_col_d == "hito_5_val" and prom is not None:
                     prom_str = f"{prom/30.0:.1f} meses"
                 else:
                     prom_str = f"{prom:.1f} días" if prom is not None else "—"
@@ -2493,7 +2551,7 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
                     for r in sub.to_dicts():
                         dias_v = r[sel_hito_col_d]
                         if dias_v is not None:
-                            if sel_hito_col_d == "hito_4_val":
+                            if sel_hito_col_d == "hito_5_val":
                                 dias_str = f"{dias_v/30.0:.1f} m"
                             else:
                                 dias_str = f"{dias_v:.1f} d"
@@ -2503,7 +2561,7 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
                         if es_hito_sin_semaforo_d:
                             clasi_v = None
                         elif dias_v is not None:
-                            if sel_hito_col_d == "hito_4_val":
+                            if sel_hito_col_d == "hito_5_val":
                                 meses = dias_v / 30.0
                                 if   meses <= 1: clasi_v = "0-1"
                                 elif meses <= 3: clasi_v = "1.1-3"
@@ -2582,7 +2640,7 @@ if tab_d_proyectos is not None and df_descent_hitos is not None:
     st.markdown("<div class='section-heading'>Proyectos · Descentralizadas</div>",
                 unsafe_allow_html=True)
 
-    fcd1, fcd2 = st.columns([2, 1.6])
+    fcd1, fcd2, fcd3 = st.columns([2, 1.6, 1.4])
     with fcd1:
         busq_d = st.text_input("busq_descent", placeholder="Buscar por BPIN o nombre…",
                                label_visibility="collapsed", key="busq_d")
@@ -2591,6 +2649,16 @@ if tab_d_proyectos is not None and df_descent_hitos is not None:
         sel_eje_d = st.multiselect("Ejecutor (Descent.)", ejecutores_d,
                                    placeholder="Todos los ejecutores",
                                    label_visibility="collapsed", key="ms_eje_d")
+    with fcd3:
+        if "SECTOR" in df_descent_hitos.columns:
+            sector_opts_d = sorted(df_descent_hitos["SECTOR"].drop_nulls().unique().to_list())
+            sel_sector_d = st.multiselect(
+                "Sector (Descent.)", sector_opts_d,
+                placeholder="Todos los sectores",
+                label_visibility="collapsed", key="ms_sector_d",
+            )
+        else:
+            sel_sector_d = []
 
     df_proy_d = df_descent_hitos
     if busq_d:
@@ -2606,6 +2674,8 @@ if tab_d_proyectos is not None and df_descent_hitos is not None:
             )
     if sel_eje_d:
         df_proy_d = df_proy_d.filter(pl.col("EJECUTOR").is_in(sel_eje_d))
+    if sel_sector_d:
+        df_proy_d = df_proy_d.filter(pl.col("SECTOR").is_in(sel_sector_d))
 
     df_proy_d = df_proy_d.sort(["EJECUTOR", "BPIN"])
     st.markdown(
@@ -2616,12 +2686,13 @@ if tab_d_proyectos is not None and df_descent_hitos is not None:
 
     rows_d_html = []
     for r in df_proy_d.to_dicts():
-        eje  = html.escape(r.get("EJECUTOR") or "—")
-        bpin = html.escape(str(r.get("BPIN") or "—"))
-        nom  = html.escape(r.get("NOMBRE DEL PROYECTO") or "—")
-        est  = r.get("ESTADO PROYECTO") or ""
-        af   = r.get("AVANCE FÍSICO")
-        an   = r.get("AVANCE FINANCIERO")
+        eje    = html.escape(r.get("EJECUTOR") or "—")
+        bpin   = html.escape(str(r.get("BPIN") or "—"))
+        nom    = html.escape(r.get("NOMBRE DEL PROYECTO") or "—")
+        sector_x = html.escape(r.get("SECTOR") or "—")
+        est    = r.get("ESTADO PROYECTO") or ""
+        af     = r.get("AVANCE FÍSICO")
+        an     = r.get("AVANCE FINANCIERO")
         def _fmt_pct(v):
             if v is None: return "—"
             try:
@@ -2635,6 +2706,7 @@ if tab_d_proyectos is not None and df_descent_hitos is not None:
             <td class="proy-ent" style="white-space:normal;font-size:0.74rem">{eje}</td>
             <td><span class="bpin-tag">{bpin}</span></td>
             <td class="proy-nombre">{nom}</td>
+            <td style="font-size:0.74rem;color:{C['muted']};white-space:normal">{sector_x}</td>
             <td>{_estado_tooltip_html(est, r)}</td>
             <td style="text-align:center">{_fmt_pct(af)}</td>
             <td style="text-align:center">{_fmt_pct(an)}</td>
@@ -2646,12 +2718,13 @@ if tab_d_proyectos is not None and df_descent_hitos is not None:
         <th style="width:130px">Ejecutor</th>
         <th style="width:110px">BPIN</th>
         <th>Nombre del proyecto</th>
-        <th style="width:175px">Estado proyecto</th>
-        <th style="width:90px">Avance<br>físico</th>
-        <th style="width:90px">Avance<br>financiero</th>
+        <th style="width:130px">Sector</th>
+        <th style="width:165px">Estado proyecto</th>
+        <th style="width:85px">Avance<br>físico</th>
+        <th style="width:85px">Avance<br>financiero</th>
     </tr></thead>
     <tbody>{''.join(rows_d_html) if rows_d_html else
-        f'<tr><td colspan="6" style="padding:1rem;text-align:center;color:{C["muted"]};font-style:italic">'
+        f'<tr><td colspan="7" style="padding:1rem;text-align:center;color:{C["muted"]};font-style:italic">'
         'Sin proyectos para los filtros activos.</td></tr>'}
     </tbody></table>
     """, unsafe_allow_html=True)
@@ -2849,7 +2922,7 @@ if tab_d_alertas is not None and df_descent_hitos is not None:
         "hito_1_val": ["101-150", "151-180", ">180"],
         "hito_2_val": ["101-150", "151-180", ">180"],
         "hito_3_val": ["16-30", "31-45", ">45"],
-        "hito_4_val": ["1.1-3", "3.1-6", ">6"],
+        "hito_5_val": ["1.1-3", "3.1-6", ">6"],
     }
     ALERTA_COLOR_D = {
         "101-150": (C["naranja"], "#fff7ed"), "31-45":   (C["naranja"], "#fff7ed"),
@@ -2905,7 +2978,7 @@ if tab_d_alertas is not None and df_descent_hitos is not None:
          "hitos": [("clasi_3", "hito_3_val")],
          "color_est": (C["azul_medio"], "#dbeafe")},
         {"estado": "CONTRATADO EN EJECUCIÓN", "label": "Contratado en ejecución",
-         "hitos": [("clasi_4", "hito_4_val")],
+         "hitos": [("clasi_5", "hito_5_val")],
          "color_est": (C["verde_medio"], "#d1fae5")},
     ]
 
@@ -3071,7 +3144,7 @@ if tab_m_proyectos is not None and df_municipios is not None:
         unsafe_allow_html=True,
     )
 
-    fmc1, fmc2 = st.columns([2, 1.6])
+    fmc1, fmc2, fmc3 = st.columns([2, 1.6, 1.4])
     with fmc1:
         busq_m = st.text_input("busq_munic", placeholder="Buscar por BPIN o nombre…",
                                label_visibility="collapsed", key="busq_m")
@@ -3080,6 +3153,16 @@ if tab_m_proyectos is not None and df_municipios is not None:
         sel_eje_m = st.multiselect("Municipio", ejecutores_m,
                                    placeholder="Todos los municipios",
                                    label_visibility="collapsed", key="ms_eje_m")
+    with fmc3:
+        if "SECTOR" in df_municipios.columns:
+            sector_opts_m = sorted(df_municipios["SECTOR"].drop_nulls().unique().to_list())
+            sel_sector_m = st.multiselect(
+                "Sector (Municipios)", sector_opts_m,
+                placeholder="Todos los sectores",
+                label_visibility="collapsed", key="ms_sector_m",
+            )
+        else:
+            sel_sector_m = []
 
     df_proy_m = df_municipios
     if busq_m:
@@ -3095,6 +3178,8 @@ if tab_m_proyectos is not None and df_municipios is not None:
             )
     if sel_eje_m:
         df_proy_m = df_proy_m.filter(pl.col("EJECUTOR").is_in(sel_eje_m))
+    if sel_sector_m:
+        df_proy_m = df_proy_m.filter(pl.col("SECTOR").is_in(sel_sector_m))
 
     df_proy_m = df_proy_m.sort(["EJECUTOR", "BPIN"])
     st.markdown(
