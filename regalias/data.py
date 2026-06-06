@@ -5,7 +5,7 @@ Incluye: clasificar*, procesar*, procesar_descentralizadas_hitos,
          procesar_municipios, _cargar_desde_github, procesar_contratos,
          validar_archivo, th, error_card.
 """
-from constants import (
+from regalias.constants import (
     TABLA_ESPERADA, TABLA_DESCENTRALIZADAS, TABLA_MUNICIPIOS,
     COLS_EVAL, COLS_EVAL_LABELS,
     INTERVALOS, COLUMNAS_ESPERADAS, TIPO_LABEL, TIPO_EJEMPLO, C,
@@ -153,16 +153,28 @@ def _leer_tabla_robusta(file_bytes, nombre):
 
 def aplicar_hito_4_en_ejecucion(df, df_contratos):
     """
-    Calcula el Hito 4 — En ejecución (sin semáforo) — para el DataFrame de
-    Departamento. Aplica solo a proyectos con:
-        · ESTADO PROYECTO == "CONTRATADO EN EJECUCIÓN"
-        · HORIZONTE DEL PROYECTO >= FECHA DE CORTE GESPROY  (horizonte vigente)
-        · Ningún contrato del proyecto en estado SUSPENDIDO
-    El valor del hito son los días entre la FECHA ACTA INICIO y la FECHA DE
-    CORTE GESPROY. No genera columna de clasificación (clasi_4) porque el
-    hito no tiene semáforo: se reporta únicamente la cantidad de días.
-    Si el archivo de contratos no está disponible, asume que ningún proyecto
-    tiene contratos suspendidos (la condición de suspendido se ignora).
+    Aplica al DataFrame de Departamento los hitos que dependen del archivo de
+    contratos (CG-cttos), usando el conjunto de BPINs con al menos un contrato
+    SUSPENDIDO:
+
+      · Hito 4 — En ejecución (sin semáforo). Proyectos con:
+            ESTADO PROYECTO == "CONTRATADO EN EJECUCIÓN"
+            HORIZONTE DEL PROYECTO >= FECHA DE CORTE GESPROY  (horizonte vigente)
+            ningún contrato del proyecto SUSPENDIDO
+        Valor = días entre FECHA ACTA INICIO y FECHA DE CORTE GESPROY.
+
+      · Hito 7 — Proyectos suspendidos (sin semáforo, conteo). Proyectos con:
+            ESTADO PROYECTO == "CONTRATADO EN EJECUCIÓN"
+            al menos un contrato del proyecto SUSPENDIDO
+        Valor = 1 (se reporta como número de proyectos).
+
+      · Hito 5 — se le quitan los proyectos suspendidos (que pasan a H7), para
+        que H5 y H7 sean mutuamente excluyentes tras eliminar la condición
+        CPI/SPI. Se anula tanto hito_5_val como su clasificación clasi_5.
+
+    Ninguno genera columna de clasificación de semáforo propia (H4 y H7 son
+    informativos). Si el archivo de contratos no está disponible, asume que
+    ningún proyecto tiene contratos suspendidos.
     """
     if df is None or "ESTADO PROYECTO" not in df.columns:
         return df
@@ -185,7 +197,28 @@ def aplicar_hito_4_en_ejecucion(df, df_contratos):
         pl.col("BPIN").cast(pl.Utf8)
         .str.replace_all(r"[.\-,\s]", "")
     )
+    es_suspendido = bpin_norm.is_in(bpins_susp)
 
+    # ── Hito 7 — En ejecución con al menos un contrato suspendido (conteo) ──
+    df = df.with_columns(
+        pl.when(
+            (pl.col("ESTADO PROYECTO") == "CONTRATADO EN EJECUCIÓN") & es_suspendido
+        ).then(pl.lit(1)).otherwise(None).alias("hito_7_val")
+    )
+
+    # ── Hito 5 — excluir los suspendidos (pasan a H7) ──
+    if "hito_5_val" in df.columns:
+        df = df.with_columns(
+            pl.when(es_suspendido).then(None)
+            .otherwise(pl.col("hito_5_val")).alias("hito_5_val")
+        )
+        if "clasi_5" in df.columns:
+            df = df.with_columns(
+                pl.when(es_suspendido).then(None)
+                .otherwise(pl.col("clasi_5")).alias("clasi_5")
+            )
+
+    # ── Hito 4 — En ejecución vigente sin suspendidos ──
     requeridas = ["FECHA ACTA INICIO", "FECHA DE CORTE GESPROY", "HORIZONTE DEL PROYECTO"]
     if any(c not in df.columns for c in requeridas):
         return df.with_columns(pl.lit(None, dtype=pl.Int64).alias("hito_4_val"))
@@ -197,7 +230,7 @@ def aplicar_hito_4_en_ejecucion(df, df_contratos):
             (~pl.col("FECHA DE CORTE GESPROY").is_null()) &
             (~pl.col("HORIZONTE DEL PROYECTO").is_null()) &
             (pl.col("HORIZONTE DEL PROYECTO") >= pl.col("FECHA DE CORTE GESPROY")) &
-            (~bpin_norm.is_in(bpins_susp))
+            (~es_suspendido)
         ).then(
             (pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA ACTA INICIO")).dt.total_days()
         ).otherwise(None).alias("hito_4_val")
@@ -285,17 +318,22 @@ def procesar(file_bytes, fecha_corte_override=None):
 
     DATE_COLS = [
         "FECHA APROBACIÓN PROYECTO", "FECHA DE APERTURA DEL PRIMER PROCESO",
-        "FECHA SUSCRIPCION", "FECHA ACTA INICIO", "HORIZONTE DEL PROYECTO",
+        "FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL", "FECHA ACTA INICIO", "HORIZONTE DEL PROYECTO",
         "FECHA DE FINALIZACIÓN", "FECHA DE CORTE GESPROY",
     ]
 
-    cast_exprs = _cast_dates_exprs(df, DATE_COLS)
+    # Columna del Hito 8 (Proyecto para cierre). Solo existe en versiones nuevas
+    # del Excel; se trata como opcional para no romper libros anteriores.
+    COL_PARA_CIERRE = "FECHA EN LA QUE PASO A ESTADO PARA CIERRE"
+    date_cols_all = DATE_COLS + ([COL_PARA_CIERRE] if COL_PARA_CIERRE in df.columns else [])
+
+    cast_exprs = _cast_dates_exprs(df, date_cols_all)
 
     # Columnas opcionales — solo las incluimos si están presentes
     extra_cols = [c for c in (AVANCE_FISICO_DEPTO, AVANCE_FINANCIERO,
                               "RESPONSABLE CARGUE EN GESPROY",
                               "COMENTARIOS CALIFICACIÓN", "SECTOR",
-                              "MUNICIPIOS") if c in df.columns]
+                              "MUNICIPIOS", COL_PARA_CIERRE) if c in df.columns]
 
     df = (
         df.select(
@@ -350,12 +388,14 @@ def procesar(file_bytes, fecha_corte_override=None):
             # Hito 3
             pl.when(
                 (pl.col("ESTADO PROYECTO") == "CONTRATADO SIN ACTA DE INICIO") &
-                (~pl.col("FECHA SUSCRIPCION").is_null())
-            ).then((pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA SUSCRIPCION")).dt.total_days()).otherwise(None).alias("hito_3_val"),
-            # Hito 5
+                (~pl.col("FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL").is_null())
+            ).then((pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL")).dt.total_days()).otherwise(None).alias("hito_3_val"),
+            # Hito 5 — En ejecución rezagado. Se eliminó la condición CPI=0 y
+            # SPI=0 (AjustesReporte punto 1): ahora basta con horizonte vencido.
+            # Los proyectos con contrato suspendido se descartan luego en
+            # aplicar_hito_4_en_ejecucion (pasan a H7).
             pl.when(
                 (pl.col("ESTADO PROYECTO") == "CONTRATADO EN EJECUCIÓN") &
-                (pl.col("CPI") == 0) & (pl.col("SPI") == 0) &
                 (pl.col("HORIZONTE DEL PROYECTO") <= pl.col("FECHA DE CORTE GESPROY"))
             ).then((pl.col("FECHA DE CORTE GESPROY") - pl.col("HORIZONTE DEL PROYECTO")).dt.total_days()).otherwise(None).alias("hito_5_val"),
             # Hito 6 — solo proyectos con estado TERMINADO. Antes contaba todos
@@ -383,6 +423,24 @@ def procesar(file_bytes, fecha_corte_override=None):
             clasificar("hito_6_val", INTERVALOS["hito_6_val"]).alias("clasi_6"),
         )
     )
+
+    # Hito 8 — Proyecto para cierre (informativo, sin semáforo). Días entre la
+    # fecha en que el proyecto pasó a estado PARA CIERRE y la fecha de corte
+    # GESPROY (que ya refleja "hoy" si el usuario eligió ese filtro). Luego se
+    # promedia por dependencia en la vista de resumen. La columna de origen es
+    # opcional; si el Excel no la trae, hito_8_val queda null.
+    if COL_PARA_CIERRE in df.columns:
+        df = df.with_columns(
+            pl.when(
+                (pl.col("ESTADO PROYECTO") == "PARA CIERRE") &
+                (~pl.col(COL_PARA_CIERRE).is_null()) &
+                (~pl.col("FECHA DE CORTE GESPROY").is_null())
+            ).then(
+                (pl.col("FECHA DE CORTE GESPROY") - pl.col(COL_PARA_CIERRE)).dt.total_days()
+            ).otherwise(None).alias("hito_8_val")
+        )
+    else:
+        df = df.with_columns(pl.lit(None, dtype=pl.Int64).alias("hito_8_val"))
     return df
 
 def _validar_cols_eval(df, cols, col_agrup):
@@ -933,20 +991,22 @@ def procesar_descentralizadas_hitos(file_bytes, fecha_corte_override=None):
                 (pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA DE APERTURA DEL PRIMER PROCESO")).dt.total_days()
             ).otherwise(None).alias("hito_2_val")
         )
-    if all(c in df.columns for c in ("FECHA SUSCRIPCION", "FECHA DE CORTE GESPROY")):
+    if all(c in df.columns for c in ("FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL", "FECHA DE CORTE GESPROY")):
         hito_exprs.append(
             pl.when(
                 (pl.col("ESTADO PROYECTO") == "CONTRATADO SIN ACTA DE INICIO") &
-                (~pl.col("FECHA SUSCRIPCION").is_null())
+                (~pl.col("FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL").is_null())
             ).then(
-                (pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA SUSCRIPCION")).dt.total_days()
+                (pl.col("FECHA DE CORTE GESPROY") - pl.col("FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL")).dt.total_days()
             ).otherwise(None).alias("hito_3_val")
         )
-    if all(c in df.columns for c in ("HORIZONTE DEL PROYECTO", "FECHA DE CORTE GESPROY", "CPI", "SPI")):
+    if all(c in df.columns for c in ("HORIZONTE DEL PROYECTO", "FECHA DE CORTE GESPROY")):
+        # Hito 5 — sin la condición CPI=0 y SPI=0 (AjustesReporte punto 1).
+        # Descentralizadas no tiene archivo de contratos ni H7, así que aquí no
+        # se excluyen suspendidos.
         hito_exprs.append(
             pl.when(
                 (pl.col("ESTADO PROYECTO") == "CONTRATADO EN EJECUCIÓN") &
-                (pl.col("CPI") == 0) & (pl.col("SPI") == 0) &
                 (pl.col("HORIZONTE DEL PROYECTO") <= pl.col("FECHA DE CORTE GESPROY"))
             ).then(
                 (pl.col("FECHA DE CORTE GESPROY") - pl.col("HORIZONTE DEL PROYECTO")).dt.total_days()

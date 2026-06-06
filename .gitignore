@@ -1,5 +1,43 @@
+# ─── Python ───────────────────────────────────────────────
 __pycache__/
-*.pyc
-sync_test.txt
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ─── Entornos virtuales ───────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ─── Streamlit ────────────────────────────────────────────
+.streamlit/secrets.toml
+
+# ─── Variables de entorno / credenciales ──────────────────
+.env
+.env.*
+*.key
+*.pem
+
+# ─── Editores / IDE ───────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ─── Sistema operativo ────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Temporales / logs ────────────────────────────────────
+*.log
+*.tmp
+~$*.xlsx
 sync_force.txt
-contexto

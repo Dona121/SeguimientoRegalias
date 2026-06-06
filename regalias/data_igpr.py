@@ -25,7 +25,7 @@ import urllib.request
 import polars as pl
 import streamlit as st
 
-from constants import TABLA_ESPERADA, TABLA_DESCENTRALIZADAS, TABLA_MUNICIPIOS
+from regalias.constants import TABLA_ESPERADA, TABLA_DESCENTRALIZADAS, TABLA_MUNICIPIOS
 
 _log = logging.getLogger(__name__)
 

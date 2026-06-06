@@ -1755,7 +1755,7 @@ COLUMNAS_ESPERADAS = {
     "SPI":                                  ("número", [pl.Float32, pl.Float64, pl.Int32, pl.Int64]),
     "FECHA APROBACIÓN PROYECTO":            ("fecha",  [pl.Date, pl.Datetime]),
     "FECHA DE APERTURA DEL PRIMER PROCESO": ("fecha",  [pl.Date, pl.Datetime]),
-    "FECHA SUSCRIPCION":                    ("fecha",  [pl.Date, pl.Datetime]),
+    "FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL":                    ("fecha",  [pl.Date, pl.Datetime]),
     "FECHA ACTA INICIO":                    ("fecha",  [pl.Date, pl.Datetime]),
     "HORIZONTE DEL PROYECTO":               ("fecha",  [pl.Date, pl.Datetime]),
     "FECHA DE FINALIZACIÓN":                ("fecha",  [pl.Date, pl.Datetime]),
@@ -1863,7 +1863,7 @@ COLS_EVAL_LABELS = [
 DATE_COLS_DESCENT = [
     "FECHA APROBACIÓN PROYECTO",
     "FECHA DE APERTURA DEL PRIMER PROCESO",
-    "FECHA SUSCRIPCION",
+    "FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL",
     "FECHA ACTA INICIO",
     "HORIZONTE DEL PROYECTO",
     "FECHA DE CORTE GESPROY",

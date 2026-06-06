@@ -3,20 +3,20 @@ app.py — Orquestador principal de la aplicación Streamlit.
 Importa todos los módulos, gestiona sidebar, filtros, KPIs y renderiza
 las pestañas según la vista seleccionada (Departamento / Descentralizadas / Municipios).
 """
-from constants import (
+from regalias.constants import (
     C, INTERVALOS, SEMAFOROS, COLS_EVAL, COLS_EVAL_LABELS,
     TABLA_ESPERADA, TABLA_DESCENTRALIZADAS, COLUMNAS_ESPERADAS,
     TIPO_LABEL, TIPO_EJEMPLO, inject_css,
 )
-from data import (
+from regalias.data import (
     procesar, procesar_contratos, procesar_eval_sucre, procesar_descentralizadas,
     procesar_descentralizadas_hitos, procesar_municipios,
     _cargar_desde_github, validar_archivo, th, error_card,
     _render_eval_errors,
     GITHUB_RAW_URL, GITHUB_CONTRATOS_URL,
 )
-from export import generar_excel
-from render import (
+from regalias.export import generar_excel
+from regalias.render import (
     badge_html, _pill, _fmt_date, _dias_tooltip, eval_color,
     _clasificar_promedio, _contratos_panel, _calcular_clasi_modal,
     HITO_KEY_MAP, CLASI_TO_HITO, HITO_CALC_META,
@@ -28,6 +28,8 @@ import streamlit as st
 import polars as pl
 import pandas as pd
 import io
+import os
+import base64
 import html
 import json
 import logging
@@ -40,6 +42,26 @@ _log = logging.getLogger(__name__)
 
 # Inyectar CSS global y JS de tooltips
 inject_css()
+
+
+# Directorio del propio app.py — para resolver rutas de recursos (carpeta static)
+# de forma robusta sin depender del directorio de trabajo (importa en Railway).
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+@st.cache_data(show_spinner=False)
+def _img_data_uri(rel_path: str):
+    """Lee una imagen de la carpeta del proyecto y la devuelve como data-URI
+    base64, para poder incrustarla en el HTML de st.markdown (Streamlit no
+    sirve rutas de archivo locales en markdown). Devuelve None si no existe."""
+    try:
+        ruta = os.path.join(_APP_DIR, rel_path)
+        with open(ruta, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("ascii")
+        ext = os.path.splitext(ruta)[1].lstrip(".").lower() or "png"
+        return f"data:image/{ext};base64,{b64}"
+    except Exception:
+        return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -97,7 +119,7 @@ HITOS_INFO = [
         "condiciones": [
             "Tiene fecha de suscripción del contrato",
         ],
-        "formula":     ("FECHA DE CORTE GESPROY", "FECHA SUSCRIPCION", "días"),
+        "formula":     ("FECHA DE CORTE GESPROY", "FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL", "días"),
         "intervalos":  "hito_3_val",
     },
     {
@@ -119,11 +141,11 @@ HITOS_INFO = [
     {
         "n": 5,
         "titulo": "En ejecución rezagado",
-        "descripcion": "Meses que un proyecto en ejecución lleva con su horizonte vencido y sin avance.",
+        "descripcion": "Meses que un proyecto en ejecución lleva con su horizonte vencido.",
         "estados":   ["CONTRATADO EN EJECUCIÓN"],
         "condiciones": [
-            "CPI = 0  y  SPI = 0",
             "El horizonte del proyecto ya está vencido (horizonte ≤ fecha de corte)",
+            "Se excluyen los proyectos con contrato suspendido (esos pasan al Hito 7)",
         ],
         "formula":     ("FECHA DE CORTE GESPROY", "HORIZONTE DEL PROYECTO", "meses"),
         "intervalos":  "hito_5_val",
@@ -139,6 +161,32 @@ HITOS_INFO = [
         ],
         "formula":     ("FECHA DE CORTE GESPROY", "FECHA DE FINALIZACIÓN", "días"),
         "intervalos":  "hito_6_val",
+    },
+    {
+        "n": 7,
+        "titulo": "Proyectos suspendidos",
+        "descripcion": "Número de proyectos en ejecución que tienen al menos un contrato "
+                       "suspendido. Solo aplica al Departamento (depende del archivo de "
+                       "contratos CG-cttos). No tiene semáforo.",
+        "estados":   ["CONTRATADO EN EJECUCIÓN"],
+        "condiciones": [
+            "Al menos un contrato del proyecto está en estado SUSPENDIDO (según CG-cttos)",
+        ],
+        "formula":        None,  # ← no es una resta de fechas: es un conteo
+        "calculo_texto":  "Número de proyectos (conteo).",
+        "intervalos":     None,
+    },
+    {
+        "n": 8,
+        "titulo": "Proyecto para cierre",
+        "descripcion": "Días que un proyecto lleva en estado PARA CIERRE, promediados por "
+                       "dependencia. Solo aplica al Departamento. No tiene semáforo.",
+        "estados":   ["PARA CIERRE"],
+        "condiciones": [
+            "Tiene registrada la fecha en que pasó a estado PARA CIERRE",
+        ],
+        "formula":     ("FECHA DE CORTE GESPROY", "FECHA EN LA QUE PASO A ESTADO PARA CIERRE", "días"),
+        "intervalos":  None,
     },
 ]
 
@@ -166,9 +214,9 @@ def render_guia_hitos(incluir_h5: bool, fuente: str):
     st.markdown(f"""
     <div class="guia-intro">
       <div class="guia-intro-title">¿Cómo se evalúan los proyectos?</div>
-      Cada proyecto se mide contra <strong>{7 if incluir_h5 else 6} hitos de gestión</strong>
-      según el estado en que se encuentra. Los <strong>Hitos 0 y 4</strong> son
-      informativos (sin semáforo) y reportan solo el promedio de días; los demás hitos
+      Cada proyecto se mide contra <strong>{len(HITOS_INFO) if incluir_h5 else len(HITOS_INFO) - 1} hitos de gestión</strong>
+      según el estado en que se encuentra. Los <strong>Hitos 0, 4, 7 y 8</strong> son
+      informativos (sin semáforo) y reportan solo un conteo o un promedio de días; los demás hitos
       calculan el tiempo transcurrido entre dos fechas clave y lo clasifican en un
       nivel de alerta (verde, naranja, rojo o negro) según el rango en el que caiga.{h5_disclaimer}
       <br><br>
@@ -182,8 +230,9 @@ def render_guia_hitos(incluir_h5: bool, fuente: str):
     flujo = [
         ("Sin contratar",              "Hitos 0, 1 y 2"),
         ("Contratado sin acta",        "Hito 3"),
-        ("Contratado en ejecución",    "Hitos 4 y 5"),
+        ("Contratado en ejecución",    "Hitos 4, 5 y 7"),
         ("Terminado",                  "Hito 6" if incluir_h5 else "no aplica"),
+        ("Para cierre",                "Hito 8"),
     ]
     flow_parts = ['<div class="guia-flow">']
     for i, (estado, hitos) in enumerate(flujo):
@@ -215,16 +264,25 @@ def render_guia_hitos(incluir_h5: bool, fuente: str):
         else:
             cond_html = '<span style="color:#9CA3AF;font-style:italic">Sin condiciones adicionales.</span>'
 
-        col_a, col_b, unidad = hito["formula"]
-        formula_html = (
-            '<div class="guia-formula">'
-            f'<span class="guia-formula-col">{col_a}</span>'
-            '<span class="guia-formula-op">−</span>'
-            f'<span class="guia-formula-col">{col_b}</span>'
-            '<span class="guia-formula-eq">=</span>'
-            f'<span class="guia-formula-result">{unidad}</span>'
-            '</div>'
-        )
+        # Cálculo: la mayoría de los hitos son una resta de dos fechas. Los que
+        # solo cuentan proyectos (Hito 7) no tienen fórmula: muestran un texto.
+        if hito["formula"] is None:
+            formula_html = (
+                '<div class="guia-formula">'
+                f'<span class="guia-formula-result">{hito.get("calculo_texto", "Número de proyectos")}</span>'
+                '</div>'
+            )
+        else:
+            col_a, col_b, unidad = hito["formula"]
+            formula_html = (
+                '<div class="guia-formula">'
+                f'<span class="guia-formula-col">{col_a}</span>'
+                '<span class="guia-formula-op">−</span>'
+                f'<span class="guia-formula-col">{col_b}</span>'
+                '<span class="guia-formula-eq">=</span>'
+                f'<span class="guia-formula-result">{unidad}</span>'
+                '</div>'
+            )
 
         # Semáforo desde SEMAFOROS — orden de inserción preserva el orden
         # natural verde→negro porque los dicts conservan orden. Si el hito no
@@ -261,6 +319,20 @@ def render_guia_hitos(incluir_h5: bool, fuente: str):
                 '</div>'
             )
 
+        # Imagen ilustrativa: solo para el Hito 0, dentro de su mismo recuadro,
+        # justo debajo de la descripción.
+        img_html = ""
+        if hito["n"] == 0:
+            _uri = _img_data_uri(os.path.join("static", "EficienciaContratacion.png"))
+            if _uri:
+                img_html = (
+                    '<div class="guia-hito-img" style="margin-top:0.6rem">'
+                    f'<img src="{_uri}" alt="Eficiencia en la contratación" '
+                    'style="max-width:100%;height:auto;display:block;border-radius:8px;'
+                    'border:1px solid rgba(0,0,0,0.08)" />'
+                    '</div>'
+                )
+
         st.markdown(f"""
         <div class="guia-hito">
           <div class="guia-hito-header">
@@ -268,6 +340,7 @@ def render_guia_hitos(incluir_h5: bool, fuente: str):
             <div>
               <div class="guia-hito-titulo">{hito["titulo"]}</div>
               <div class="guia-hito-subtitulo">{hito["descripcion"]}</div>
+              {img_html}
             </div>
           </div>
           <div class="guia-hito-body">
@@ -549,11 +622,32 @@ df_contratos, _cttos_diag = (
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
+# CG-cttos OBLIGATORIO — el archivo de contratos debe estar siempre disponible
+# porque de él dependen los hitos 4 y 7. Si no se pudo cargar (ni desde el
+# repositorio ni manualmente), mostramos un mensaje y detenemos el render. El
+# uploader del panel lateral ya se renderizó antes, así que el usuario puede
+# subir el archivo y la app continuará en el siguiente rerun. La Guía de hitos
+# no llega hasta aquí (hace st.stop antes), así que la pantalla introductoria
+# sigue disponible sin el archivo.
+# ─────────────────────────────────────────────────────────────────────────────
+if df_contratos is None or df_contratos.height == 0:
+    st.markdown(error_card(
+        "Falta el archivo de contratos (CG-cttos)",
+        "El archivo de contratos <b>CG-cttos</b> es obligatorio para calcular los "
+        "hitos que dependen del estado de los contratos (<b>Hito 4 · En ejecución</b> y "
+        "<b>Hito 7 · Proyectos suspendidos</b>). No se pudo cargar automáticamente "
+        "desde el repositorio.",
+        "Sube el archivo <b>CG-cttos.xlsx</b> desde el panel lateral, en la sección "
+        "<b>Contratos</b>. Una vez cargado, la aplicación continuará automáticamente.",
+    ), unsafe_allow_html=True)
+    st.stop()
+
+# ─────────────────────────────────────────────────────────────────────────────
 # HITO 4 — En ejecución (sin semáforo). Solo aplica al Departamento porque
 # necesita el archivo de contratos para descartar proyectos con al menos un
 # contrato suspendido. Se calcula DESPUÉS de cargar df_contratos.
 # ─────────────────────────────────────────────────────────────────────────────
-from data import aplicar_hito_4_en_ejecucion
+from regalias.data import aplicar_hito_4_en_ejecucion
 df = aplicar_hito_4_en_ejecucion(df, df_contratos)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -590,7 +684,7 @@ if vista == "Guía de hitos":
 # Matriz de Seguimiento para construir el catálogo BPIN → ENTIDAD.
 # ═════════════════════════════════════════════════════════════════════════════
 if vista == "IGPR":
-    from igpr import render_igpr
+    from regalias.igpr import render_igpr
     render_igpr(file_bytes)
     st.stop()
 
@@ -717,7 +811,7 @@ if vista == "Mapa":
     </style>
     """, unsafe_allow_html=True)
 
-    from mapa import render_mapa
+    from regalias.mapa import render_mapa
     render_mapa(df_f, df_descent_hitos, df_municipios)
     st.stop()
 
@@ -898,6 +992,8 @@ agrupacion = (
         pl.col("hito_4_val").mean().round(1).alias("Hito 4 (días)"),
         pl.col("hito_5_val").mean().round(1).alias("Hito 5 (días)"),
         pl.col("hito_6_val").mean().round(1).alias("Hito 6 (días)"),
+        pl.col("hito_7_val").sum().alias("Hito 7"),
+        pl.col("hito_8_val").mean().round(1).alias("Hito 8 (días)"),
         pl.col("Suspendidos").sum().alias("Suspendidos"),
         pl.col("Para cierre").sum().alias("Para cierre"),
         pl.len().alias("Total"),
@@ -990,6 +1086,7 @@ if tab_resumen is not None:
 
     def _build_row(row):
         e    = html.escape(row["ENTIDAD O SECRETARIA"] or "")
+        h7   = int(row["Hito 7"]) if row["Hito 7"] else 0
         susp = int(row["Suspendidos"]) if row["Suspendidos"] else 0
         pc   = int(row["Para cierre"]) if row["Para cierre"] else 0
         return f"""<tr>
@@ -1001,6 +1098,8 @@ if tab_resumen is not None:
             {hito_cell_sin_semaforo(row['Hito 4 (días)'])}
             {hito_cell(row['Hito 5 (días)'], 'clasi_5')}
             {hito_cell(row['Hito 6 (días)'], 'clasi_6')}
+            <td style="text-align:center;font-weight:500">{h7}</td>
+            {hito_cell_sin_semaforo(row['Hito 8 (días)'])}
             <td style="text-align:center;font-weight:500">{susp}</td>
             <td style="text-align:center;font-weight:500">{pc}</td>
             <td class="col-total">{int(row['Total'])}</td>
@@ -1023,10 +1122,14 @@ if tab_resumen is not None:
         {th("En<br>ejecución", "Hito 4 · En ejecución",
             "Promedio de días entre la <b>Fecha acta de inicio</b> y la <b>Fecha de corte GESPROY</b> para proyectos en ejecución con horizonte vigente y sin contratos suspendidos.<br><br>Este hito es informativo: no tiene clasificación de semáforo.")}
         {th("En ejecución<br>rezagado", "Hito 5 · En ejecución rezagado",
-            "Meses entre el <b>Horizonte del proyecto</b> y la <b>Fecha de corte GESPROY</b>.<br><br>Condición: Estado = CONTRATADO EN EJECUCIÓN, CPI = 0, SPI = 0 y horizonte vencido.")}
+            "Meses entre el <b>Horizonte del proyecto</b> y la <b>Fecha de corte GESPROY</b>.<br><br>Condición: Estado = CONTRATADO EN EJECUCIÓN y horizonte vencido. Se excluyen los proyectos con contrato suspendido (pasan al Hito 7).")}
         {th("Proyectos<br>terminados", "Hito 6 · Proyectos terminados",
             "Promedio de días entre la <b>Fecha de finalización</b> y la <b>Fecha de corte GESPROY</b>.<br><br>Condición: Estado = TERMINADO y Fecha de finalización registrada.")}
-        {th("Suspendidos", "Proyectos suspendidos", "Conteo de proyectos cuyo <b>Estado contrato</b> = SUSPENDIDO.")}
+        {th("Suspendidos<br>en ejecución", "Hito 7 · Proyectos suspendidos",
+            "Número de proyectos en ejecución con al menos un contrato en estado SUSPENDIDO (según el archivo CG-cttos).<br><br>Este hito es informativo: se mide como número de proyectos, sin semáforo.")}
+        {th("Para cierre<br>(días)", "Hito 8 · Proyecto para cierre",
+            "Promedio de días entre la <b>Fecha en que pasó a estado PARA CIERRE</b> y la <b>Fecha de corte GESPROY</b>.<br><br>Condición: Estado = PARA CIERRE con fecha registrada. Este hito es informativo: no tiene semáforo.")}
+        {th("Suspendidos", "Proyectos suspendidos (contrato)", "Conteo de proyectos cuyo <b>Estado contrato</b> = SUSPENDIDO.")}
         {th("Para cierre", "Proyectos para cierre", "Conteo de proyectos con Estado = PARA CIERRE.")}
         <th class="col-total">Total</th>
     </tr></thead>
@@ -1056,7 +1159,7 @@ if tab_resumen is not None:
 
     DATE_COLS_DET = [
         "FECHA APROBACIÓN PROYECTO", "FECHA DE APERTURA DEL PRIMER PROCESO",
-        "FECHA SUSCRIPCION", "FECHA ACTA INICIO", "HORIZONTE DEL PROYECTO",
+        "FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL", "FECHA ACTA INICIO", "HORIZONTE DEL PROYECTO",
         "FECHA DE FINALIZACIÓN", "FECHA DE CORTE GESPROY",
     ]
     # Incluimos COMENTARIOS CALIFICACIÓN si está presente — se usa como
@@ -1344,7 +1447,7 @@ if tab_proyectos is not None:
         "ENTIDAD O SECRETARIA", "BPIN", "NOMBRE PROYECTO",
         "ESTADO PROYECTO", "ESTADO CONTRATO", "CPI", "SPI",
         "FECHA APROBACIÓN PROYECTO", "FECHA DE APERTURA DEL PRIMER PROCESO",
-        "FECHA SUSCRIPCION", "FECHA ACTA INICIO",
+        "FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL", "FECHA ACTA INICIO",
         "HORIZONTE DEL PROYECTO", "FECHA DE FINALIZACIÓN", "FECHA DE CORTE GESPROY",
         "hito_1_val", "hito_2_val", "hito_3_val", "hito_4_val", "hito_5_val", "hito_6_val",
         "clasi_1", "clasi_2", "clasi_3", "clasi_5", "clasi_6",
@@ -2514,7 +2617,7 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
         DATE_COLS_DET_D = [
             c for c in (
                 "FECHA APROBACIÓN PROYECTO", "FECHA DE APERTURA DEL PRIMER PROCESO",
-                "FECHA SUSCRIPCION", "FECHA ACTA INICIO",
+                "FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL", "FECHA ACTA INICIO",
                 "HORIZONTE DEL PROYECTO", "FECHA DE CORTE GESPROY",
             ) if c in df_descent_hitos.columns
         ]

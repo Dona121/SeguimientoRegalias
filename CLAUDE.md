@@ -24,34 +24,47 @@ Ver `requirements.txt`.
 
 ## Estructura de archivos
 
+El proyecto está empaquetado con **uv** (`pyproject.toml` + `uv.lock`). El
+ejecutable principal (`app.py`) vive en la raíz y toda la lógica está en el
+paquete `regalias/`. Los módulos se importan con prefijo absoluto del paquete
+(`from regalias.constants import ...`).
+
 ```
 Seguimiento Regalias/
 ├── app.py            # Orquestador principal (~3200 líneas): sidebar, header,
 │                     #   routing por vista, render de KPIs, tabs, guía.
-├── constants.py      # Paleta de colores (C), inyección de CSS+JS global
-│                     #   (inject_css), INTERVALOS, SEMAFOROS, COLS_EVAL,
-│                     #   TABLA_ESPERADA, TABLA_DESCENTRALIZADAS, TABLA_MUNICIPIOS.
-├── data.py           # Lectura y procesamiento: _leer_tabla_robusta (fallback
-│                     #   de estrategias), procesar(), procesar_descentralizadas_hitos(),
-│                     #   procesar_municipios(), procesar_eval_sucre(),
-│                     #   procesar_descentralizadas(), procesar_contratos(),
-│                     #   aplicar_hito_4_en_ejecucion(), validar_archivo(),
-│                     #   _cargar_desde_github().
-├── data_igpr.py      # Descarga y procesa los 5 Excel del IGPR (DNP). Aplica
-│                     #   limpieza de encabezados, filtra Sucre, calcula flags
-│                     #   de situación 2026 y agrega resumen por entidad/periodo
-│                     #   con el descuento de −10 puntos.
-├── igpr.py           # Vista del IGPR: KPIs globales, evolución por trimestre,
-│                     #   matriz Entidad × Periodo, detalle por trimestre, detalle
-│                     #   por entidad, metodología (Res. 4574).
-├── mapa.py           # Visor geográfico (Leaflet) de proyectos por municipio
-│                     #   con el GeoJSON de Sucre.
-├── export.py         # Generación del Excel global consolidado (9 hojas).
-├── render.py         # Helpers de presentación: badge_html, _pill, _fmt_date,
-│                     #   _dias_tooltip, _estado_tooltip_html, eval_color,
-│                     #   _clasificar_promedio, _contratos_panel, HITO_KEY_MAP, etc.
-├── Sucre.geojson     # Geometrías de los municipios para el visor de mapa.
-└── requirements.txt
+│                     #   Imports: from regalias.<modulo> import ...
+├── pyproject.toml    # Metadata + dependencias (uv). package = false (es app).
+├── uv.lock           # Lockfile reproducible de uv.
+├── requirements.txt  # Espejo de las deps (para Railway). Sincronizar con pyproject.
+├── .python-version   # Python fijado a 3.13 (uv).
+├── CLAUDE.md
+└── regalias/         # Paquete con toda la lógica
+    ├── __init__.py
+    ├── constants.py  # Paleta de colores (C), inyección de CSS+JS global
+    │                 #   (inject_css), INTERVALOS, SEMAFOROS, COLS_EVAL,
+    │                 #   TABLA_ESPERADA, TABLA_DESCENTRALIZADAS, TABLA_MUNICIPIOS.
+    ├── data.py       # Lectura y procesamiento: _leer_tabla_robusta (fallback
+    │                 #   de estrategias), procesar(), procesar_descentralizadas_hitos(),
+    │                 #   procesar_municipios(), procesar_eval_sucre(),
+    │                 #   procesar_descentralizadas(), procesar_contratos(),
+    │                 #   aplicar_hito_4_en_ejecucion(), validar_archivo(),
+    │                 #   _cargar_desde_github().
+    ├── data_igpr.py  # Descarga y procesa los 5 Excel del IGPR (DNP). Aplica
+    │                 #   limpieza de encabezados, filtra Sucre, calcula flags
+    │                 #   de situación 2026 y agrega resumen por entidad/periodo
+    │                 #   con el descuento de −10 puntos.
+    ├── igpr.py       # Vista del IGPR: KPIs globales, evolución por trimestre,
+    │                 #   matriz Entidad × Periodo, detalle por trimestre, detalle
+    │                 #   por entidad, metodología (Res. 4574).
+    ├── mapa.py       # Visor geográfico (Leaflet) de proyectos por municipio.
+    │                 #   Carga el GeoJSON con os.path.dirname(__file__) → el
+    │                 #   Sucre.geojson DEBE estar junto a este archivo.
+    ├── export.py     # Generación del Excel global consolidado (9 hojas).
+    ├── render.py     # Helpers de presentación: badge_html, _pill, _fmt_date,
+    │                 #   _dias_tooltip, _estado_tooltip_html, eval_color,
+    │                 #   _clasificar_promedio, _contratos_panel, HITO_KEY_MAP, etc.
+    └── Sucre.geojson # Geometrías de los municipios para el visor de mapa.
 ```
 
 ---
@@ -66,7 +79,7 @@ El archivo Excel principal tiene **3 tablas/hojas**:
 | `OtrosEjecutoresDescentralizadas` | Descentralizadas | ~16 proyectos | 38 columnas. Hitos 1, 2, 3 y 5. NO tiene H4 (requiere contratos) ni H6 (sin fecha de finalización). |
 | `OtrosEjecutoresMunicipios` | Otros ejecutores (label) / Municipios (interno) | ~102 proyectos | 18 columnas. Sin hitos. |
 
-**Default GitHub URLs** (en `data.py` / `data_igpr.py`):
+**Default GitHub URLs** (en `regalias/data.py` / `regalias/data_igpr.py`):
 - Matriz principal: `https://raw.githubusercontent.com/Dona121/Matriz-Evaluacion-Regalias/main/data/MatrizSeguimientoEvaluacion.xlsx`
 - Contratos: `https://raw.githubusercontent.com/Dona121/Matriz-Evaluacion-Regalias/main/data/CG-cttos.xlsx`
 - IGPR (5 archivos): `https://raw.githubusercontent.com/Dona121/Matriz-Evaluacion-Regalias/main/data/IGPR/...`
@@ -140,8 +153,9 @@ tiempo entre dos fechas en un nivel de alerta.
 ### H3 — Contratado sin acta de inicio
 
 - **Aplica:** `ESTADO PROYECTO == "CONTRATADO SIN ACTA DE INICIO"` **Y** tiene fecha de suscripción.
-- **Cálculo:** `FECHA DE CORTE GESPROY - FECHA SUSCRIPCION` en días.
+- **Cálculo:** `FECHA DE CORTE GESPROY - FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL` en días.
 - **Semáforo (días):** verde 0-15, naranja 16-30, rojo 31-45, negro >45.
+- **Nota (renombre):** la columna antes se llamaba `FECHA SUSCRIPCION`; en el Excel nuevo es `FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL`. Existe además `FECHA DE SUSCRIPCIÓN DEL PRIMER CONTRATO` (aún sin uso). H3 usa la del **contrato principal**.
 
 ### H4 — En ejecución (informativo, sin semáforo · SOLO Departamento)
 
@@ -153,11 +167,12 @@ tiempo entre dos fechas en un nivel de alerta.
 
 ### H5 — En ejecución rezagado
 
-- **Aplica:** `ESTADO PROYECTO == "CONTRATADO EN EJECUCIÓN"` **Y** `CPI == 0` **Y** `SPI == 0` **Y** `HORIZONTE DEL PROYECTO <= FECHA DE CORTE GESPROY` (horizonte vencido).
+- **Aplica:** `ESTADO PROYECTO == "CONTRATADO EN EJECUCIÓN"` **Y** `HORIZONTE DEL PROYECTO <= FECHA DE CORTE GESPROY` (horizonte vencido). **Ya NO exige `CPI == 0` ni `SPI == 0`** (se eliminó esa condición — AjustesReporte punto 1).
 - **Cálculo:** `FECHA DE CORTE GESPROY - HORIZONTE DEL PROYECTO` en días, **mostrado en MESES** (días / 30).
 - **Semáforo (meses):** verde 0-1, naranja 1.1-3, rojo 3.1-6, negro >6.
 - **El valor interno se almacena en días** (`hito_5_val`); la conversión a meses pasa al mostrar.
 - La función `clasificar_hito4_meses(col)` en `data.py` clasifica este hito (el nombre conserva la convención histórica).
+- **Exclusión de suspendidos (SOLO Departamento):** en `aplicar_hito_4_en_ejecucion` se anulan `hito_5_val` y `clasi_5` de los proyectos con ≥1 contrato suspendido (pasan a H7). Así H5 y H7 son mutuamente excluyentes. En Descentralizadas no hay archivo de contratos ni H7, así que ahí H5 solo pierde la condición CPI/SPI (no excluye suspendidos).
 
 ### H6 — Terminados pendientes de cierre (SOLO Departamento)
 
@@ -166,10 +181,25 @@ tiempo entre dos fechas en un nivel de alerta.
 - **Semáforo (días):** verde 0-100, naranja 101-150, rojo 151-180, negro >180.
 - **NO aplica a Descentralizadas** (su tabla no tiene `FECHA DE FINALIZACIÓN`).
 
+### H7 — Proyectos suspendidos (informativo, sin semáforo · SOLO Departamento)
+
+- **Aplica:** `ESTADO PROYECTO == "CONTRATADO EN EJECUCIÓN"` **Y** el proyecto tiene **al menos un contrato en estado SUSPENDIDO** (según `CG-cttos.xlsx`).
+- **Cálculo:** conteo de proyectos (`hito_7_val = 1`), reportado como número de proyectos por dependencia. **Sin semáforo.**
+- **Solo Departamento.** Se calcula en `aplicar_hito_4_en_ejecucion`, reusando el set `bpins_susp` (BPINs con contrato suspendido) que ya se construye para H4 — más eficiente que sumar contrato por contrato.
+- En Descentralizadas/Municipios NO se calcula (no hay archivo de contratos consolidado).
+
+### H8 — Proyecto para cierre (informativo, sin semáforo · SOLO Departamento)
+
+- **Aplica:** `ESTADO PROYECTO == "PARA CIERRE"` **Y** tiene `FECHA EN LA QUE PASO A ESTADO PARA CIERRE` registrada.
+- **Cálculo:** `FECHA DE CORTE GESPROY - FECHA EN LA QUE PASO A ESTADO PARA CIERRE` en días, **promediado por dependencia**. **Sin semáforo.** El `/` de la fórmula original (corte/fecha actual) se resuelve solo: `FECHA DE CORTE GESPROY` ya refleja "hoy" cuando se elige ese filtro de corte.
+- La columna `FECHA EN LA QUE PASO A ESTADO PARA CIERRE` solo existe en versiones nuevas del Excel; se trata como **opcional** (`hito_8_val` queda null si falta). En el archivo `20260526` la columna existe pero **viene vacía**, así que H8 muestra 0 hasta que se carguen las fechas.
+- Se calcula en `procesar()` (no necesita contratos).
+
 ### Otros indicadores
 
-- **Suspendidos:** flag (1/null) cuando `ESTADO CONTRATO == "SUSPENDIDO"`. Se cuenta en el resumen, NO es un hito con semáforo.
-- **Para cierre:** flag cuando `ESTADO PROYECTO == "PARA CIERRE"`. Igual.
+- **Suspendidos:** flag (1/null) cuando `ESTADO CONTRATO == "SUSPENDIDO"` (de la propia Matriz). Se cuenta en el resumen, NO es un hito con semáforo. Es distinto de **H7** (que usa CG-cttos y exige estado en ejecución).
+- **Para cierre:** flag cuando `ESTADO PROYECTO == "PARA CIERRE"`. Conteo. Es distinto de **H8** (que mide promedio de días).
+- **CG-cttos obligatorio:** el archivo de contratos debe estar siempre disponible (repositorio o carga manual). Si falta, la app muestra un mensaje y hace `st.stop()` (la Guía de hitos sí se ve, porque hace `st.stop()` antes). De CG-cttos dependen H4 y H7.
 
 ### Fecha de corte configurable
 
@@ -367,7 +397,7 @@ invalida el caché de Streamlit sin requerir que el usuario toque "Recargar".
 
 12. **Vista Mapa**: se renderiza en modo "full-viewport" con CSS especial que neutraliza el padding-top de Streamlit. NO modificar el bloque CSS de la vista Mapa sin entender el contexto (transforms/contain rompen el position:fixed del iframe).
 
-13. **Edit tool con app.py / igpr.py / data_igpr.py**: el Edit tool ha truncado estos archivos grandes en ediciones anteriores. Para cambios complejos, usar un Python script atómico con `Path.read_text()` + `str.replace()` + `Path.write_text()` y verificar con `wc -l` antes/después + `py_compile`.
+13. **Edit tool con app.py / regalias/igpr.py / regalias/data_igpr.py**: el Edit tool ha truncado estos archivos grandes en ediciones anteriores. Para cambios complejos, usar un Python script atómico con `Path.read_text()` + `str.replace()` + `Path.write_text()` y verificar con `wc -l` antes/después + `py_compile`.
 
 ---
 
@@ -405,7 +435,18 @@ policies RLS, auth email+password) — ver historial de conversación.
 
 ## Cómo correr
 
-### Local
+### Local (uv — recomendado)
+
+```bash
+uv sync                        # crea .venv e instala desde uv.lock
+uv run streamlit run app.py
+```
+
+`uv add <paquete>` / `uv remove <paquete>` para gestionar dependencias (actualizan
+`pyproject.toml` + `uv.lock`). Si cambias deps, regenera el espejo para Railway con
+`uv export --no-hashes -o requirements.txt`.
+
+### Local (pip clásico)
 
 ```bash
 pip install -r requirements.txt
@@ -451,7 +492,8 @@ Variables de entorno futuras (cuando se integre Supabase):
 - Nombres de columnas Excel se referencian como strings literales — usar `.strip()` no es necesario porque el lector ya lo hace.
 - Polars expressions: `pl.col(...)`, `pl.when().then().otherwise()`, `pl.lit()`.
 - Para columnas IGPR variables entre versiones del Excel, usar match por substring case-insensitive sin tildes (ver `_buscar_col` en `data_igpr.py`).
-- Para evitar el Edit-tool-truncates-large-files bug, usar Python scripts atómicos con `Path.read_text()` + `str.replace()` + `Path.write_text()` cuando se editen `app.py`, `igpr.py` o `data_igpr.py`.
+- Para evitar el Edit-tool-truncates-large-files bug, usar Python scripts atómicos con `Path.read_text()` + `str.replace()` + `Path.write_text()` cuando se editen `app.py`, `regalias/igpr.py` o `regalias/data_igpr.py`.
+- Imports internos: siempre con prefijo del paquete — `from regalias.constants import ...`, `from regalias.data import ...`. `app.py` (en la raíz) hace lo mismo. No usar imports planos (`from constants import`).
 
 ---
 
@@ -462,4 +504,4 @@ Variables de entorno futuras (cuando se integre Supabase):
 - `contexto/MatrizSeguimientoEvaluacion_*.xlsx` — Excel real de Sucre con las 3 tablas.
 - `contexto/Resultados IGPR - I trimestre 2026 *.xlsx` — Excel real del IGPR I 2026 con las columnas de situación.
 - `contexto/resolucion-4574-2025-12-30.pdf` (en uploads del usuario) — Resolución 4574/2025 del DNP con el marco oficial del IGPR.
-- `Sucre.geojson` — geometrías de los municipios del Departamento.
+- `regalias/Sucre.geojson` — geometrías de los municipios del Departamento (vive junto a `mapa.py`, que lo carga vía `os.path.dirname(__file__)`).

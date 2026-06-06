@@ -5,7 +5,7 @@ Incluye: badge_html, _pill, _fmt_date, _dias_tooltip, eval_color,
          _clasificar_promedio, _contratos_panel, _calcular_clasi_modal,
          constantes de color de estado.
 """
-from constants import C, INTERVALOS, SEMAFOROS
+from regalias.constants import C, INTERVALOS, SEMAFOROS
 import streamlit as st
 import polars as pl
 import html
@@ -308,7 +308,7 @@ HITO_CALC_META = {
         "Días desde la apertura del primer proceso hasta el corte, sin firma del primer contrato.",
     ),
     "hito_3_val": (
-        "Fecha suscripción",   "FECHA SUSCRIPCION",
+        "Fecha suscripción",   "FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL",
         "Fecha corte GESPROY", "FECHA DE CORTE GESPROY",
         "Días desde la suscripción del contrato hasta el corte, sin acta de inicio.",
     ),
@@ -662,7 +662,7 @@ def _estado_tooltip_html(est_proy, row_data=None):
         campos = [
             ("FECHA APROBACIÓN PROYECTO",            "Aprobación"),
             ("FECHA DE APERTURA DEL PRIMER PROCESO", "Apertura proceso"),
-            ("FECHA SUSCRIPCION",                    "Suscripción"),
+            ("FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL",                    "Suscripción"),
             ("FECHA ACTA INICIO",                    "Acta de inicio"),
             ("HORIZONTE DEL PROYECTO",               "Horizonte"),
             ("FECHA DE FINALIZACIÓN",                "Finalización"),

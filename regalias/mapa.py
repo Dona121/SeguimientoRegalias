@@ -27,7 +27,7 @@ import html
 import re
 import unicodedata
 
-from constants import C
+from regalias.constants import C
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv --version)",
+      "Bash(uv sync *)",
+      "Bash(uv python *)",
+      "Bash(uv run *)",
+      "Bash(uv pip *)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(PYTHONIOENCODING=utf-8 uv run python -)",
+      "Bash(echo \"smoke exit: $?\")"
+    ]
+  }
+}

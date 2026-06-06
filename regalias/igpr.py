@@ -22,8 +22,8 @@ import html
 import polars as pl
 import streamlit as st
 
-from constants import C
-from data_igpr import (
+from regalias.constants import C
+from regalias.data_igpr import (
     cargar_igpr,
     resumen_por_periodo,
     resumen_por_entidad_periodo,

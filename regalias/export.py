@@ -13,7 +13,7 @@ semáforo, e incluso el "Reporte semanal de alertas" calculado en línea.
 El reporte es independiente del filtro activo en el panel: siempre incluye
 las tres fuentes si están disponibles.
 """
-from constants import C, INTERVALOS, SEMAFOROS, COLS_EVAL, COLS_EVAL_LABELS
+from regalias.constants import C, INTERVALOS, SEMAFOROS, COLS_EVAL, COLS_EVAL_LABELS
 import polars as pl
 import io
 import datetime as _dt
@@ -213,12 +213,12 @@ def _comentario_alerta(estado_up, conteos, n_total):
 # ─────────────────────────────────────────────────────────────────────────────
 DATE_COLS_DPTO = {
     "FECHA APROBACIÓN PROYECTO", "FECHA DE APERTURA DEL PRIMER PROCESO",
-    "FECHA SUSCRIPCION", "FECHA ACTA INICIO", "HORIZONTE DEL PROYECTO",
+    "FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL", "FECHA ACTA INICIO", "HORIZONTE DEL PROYECTO",
     "FECHA DE FINALIZACIÓN", "FECHA DE CORTE GESPROY",
 }
 DATE_COLS_DESCENT = {
     "FECHA APROBACIÓN PROYECTO", "FECHA DE APERTURA DEL PRIMER PROCESO",
-    "FECHA SUSCRIPCION", "FECHA ACTA INICIO", "HORIZONTE DEL PROYECTO",
+    "FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL", "FECHA ACTA INICIO", "HORIZONTE DEL PROYECTO",
     "FECHA DE CORTE GESPROY",
 }
 HITO_COLS_DPTO    = {"hito_1_val", "hito_2_val", "hito_3_val", "hito_4_val", "hito_5_val", "hito_6_val"}
@@ -265,6 +265,8 @@ def _sheet_resumen_dpto(wb, df_agr):
         ("H5 alerta",                            10),
         ("H6 días\nTerminados",                  13),
         ("H6 alerta",                            10),
+        ("H7\nSuspendidos\nen ejecución",        13),
+        ("H8 días\nPara cierre",                 13),
         ("Suspendidos",                          11),
         ("Para cierre",                          11),
         ("Total",                                 9),
@@ -324,6 +326,16 @@ def _sheet_resumen_dpto(wb, df_agr):
             clasi = _clasificar_h(hito_col, num) if num is not None else None
             _sem_cell(ws.cell(r_i, col), clasi, bg_default=bg, hito_col=hito_col)
             col += 1
+        # H7 — Proyectos suspendidos en ejecución (conteo, sin semáforo)
+        v7  = row.get("Hito 7")
+        iv7 = int(v7) if v7 is not None and str(v7) != "nan" else 0
+        _data_cell(ws.cell(r_i, col), iv7, bg=bg, center=True)
+        col += 1
+        # H8 — Proyecto para cierre (promedio de días, sin semáforo)
+        v8   = row.get("Hito 8 (días)")
+        num8 = round(float(v8), 1) if v8 is not None and str(v8) != "nan" else None
+        _data_cell(ws.cell(r_i, col), num8, bg=bg, center=True, fmt="#,##0.0")
+        col += 1
         for extra in ("Suspendidos", "Para cierre", "Total"):
             v = row.get(extra)
             iv = int(v) if v is not None and str(v) != "nan" else 0
@@ -358,7 +370,7 @@ def _sheet_detalle_dpto(wb, df_f):
     base += [
         ("Fecha\naprobación",            12, "FECHA APROBACIÓN PROYECTO"),
         ("Fecha apertura\nprimer proceso", 14, "FECHA DE APERTURA DEL PRIMER PROCESO"),
-        ("Fecha\nsuscripción",           12, "FECHA SUSCRIPCION"),
+        ("Fecha\nsuscripción",           12, "FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL"),
         ("Fecha acta\ninicio",           12, "FECHA ACTA INICIO"),
         ("Horizonte\nproyecto",          12, "HORIZONTE DEL PROYECTO"),
         ("Fecha\nfinalización",          12, "FECHA DE FINALIZACIÓN"),
@@ -624,7 +636,7 @@ def _sheet_detalle_descent(wb, df_descent):
     for fcol, flbl, fw in [
         ("FECHA APROBACIÓN PROYECTO",          "Fecha\naprobación",        12),
         ("FECHA DE APERTURA DEL PRIMER PROCESO","Fecha apertura\nprimer proc.", 14),
-        ("FECHA SUSCRIPCION",                  "Fecha\nsuscripción",       12),
+        ("FECHA DE SUSCRIPCIÓN DEL CONTRATO PRINCIPAL",                  "Fecha\nsuscripción",       12),
         ("FECHA ACTA INICIO",                  "Fecha acta\ninicio",       12),
         ("HORIZONTE DEL PROYECTO",             "Horizonte\nproyecto",      12),
         ("FECHA DE CORTE GESPROY",             "Fecha corte\nGESPROY",     12),
