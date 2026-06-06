@@ -339,8 +339,7 @@ def render_guia_hitos(incluir_h5: bool, fuente: str):
             <div class="guia-hito-num">H{hito["n"]}</div>
             <div>
               <div class="guia-hito-titulo">{hito["titulo"]}</div>
-              <div class="guia-hito-subtitulo">{hito["descripcion"]}</div>
-              {img_html}
+              <div class="guia-hito-subtitulo">{hito["descripcion"]}</div>{img_html}
             </div>
           </div>
           <div class="guia-hito-body">
@@ -435,38 +434,25 @@ with st.sidebar:
     st.markdown("<div class='sidebar-section'>Datos</div>", unsafe_allow_html=True)
 
     # ── Botón de recarga ──────────────────────────────────────────────────────
-    # Limpia el caché de _cargar_desde_github (que tiene ttl=3600) para forzar
-    # una descarga fresca del repo. Útil cuando alguien acaba de subir cambios.
+    # Los archivos (matriz de seguimiento y contratos CG-cttos) se toman SIEMPRE
+    # del repositorio (AjustesReporte punto 5). El botón limpia el caché de
+    # _cargar_desde_github (ttl=3600) para forzar una descarga fresca cuando
+    # alguien acaba de actualizar el repo.
     if st.button("Recargar datos del repositorio", use_container_width=True,
                  help="Vuelve a descargar los archivos desde GitHub. Úsalo si acabas de actualizar el repositorio."):
         st.cache_data.clear()
         st.rerun()
 
-    uploaded = st.file_uploader("Subir otro archivo Excel", type=["xlsx"], label_visibility="collapsed")
-    if uploaded:
-        st.success("Usando el archivo subido manualmente.")
-    else:
-        st.markdown(
-            f"<p style='font-size:0.7rem;color:rgba(255,255,255,0.5);margin:0.3rem 0 0'>"
-            f"Cargando datos desde el repositorio por defecto. "
-            f"Sube un archivo para usar datos distintos.</p>",
-            unsafe_allow_html=True,
-        )
-    st.markdown("<div class='sidebar-section'>Contratos</div>", unsafe_allow_html=True)
-    uploaded_cttos = st.file_uploader(
-        "Archivo de contratos (CG-cttos)",
-        type=["xlsx"],
-        label_visibility="collapsed",
-        key="uploader_contratos",
+    st.markdown(
+        "<p style='font-size:0.7rem;color:rgba(255,255,255,0.5);margin:0.3rem 0 0'>"
+        "Los datos (matriz de seguimiento y contratos) se cargan automáticamente "
+        "desde el repositorio.</p>",
+        unsafe_allow_html=True,
     )
-    if uploaded_cttos:
-        st.success("Usando contratos cargados manualmente.")
-    else:
-        st.markdown(
-            f"<p style='font-size:0.7rem;color:rgba(255,255,255,0.5);margin:0.3rem 0 0'>"
-            f"Contratos desde el repositorio por defecto.</p>",
-            unsafe_allow_html=True,
-        )
+
+    # Carga manual deshabilitada: ya no se suben archivos desde la app.
+    uploaded = None
+    uploaded_cttos = None
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HEADER — se oculta para Mapa (full-screen con su propia barra) y para IGPR
@@ -497,9 +483,9 @@ else:
 
 if file_bytes is None:
     st.error(
-        "No se pudo cargar el archivo de datos. "
+        "No se pudo cargar el archivo de datos desde el repositorio. "
         "Verifica que la URL en `GITHUB_RAW_URL` sea correcta y que el repositorio sea público, "
-        "o sube el archivo manualmente desde el panel izquierdo."
+        "y usa «Recargar datos del repositorio» en el panel lateral."
     )
     st.stop()
 
@@ -623,22 +609,20 @@ df_contratos, _cttos_diag = (
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CG-cttos OBLIGATORIO — el archivo de contratos debe estar siempre disponible
-# porque de él dependen los hitos 4 y 7. Si no se pudo cargar (ni desde el
-# repositorio ni manualmente), mostramos un mensaje y detenemos el render. El
-# uploader del panel lateral ya se renderizó antes, así que el usuario puede
-# subir el archivo y la app continuará en el siguiente rerun. La Guía de hitos
-# no llega hasta aquí (hace st.stop antes), así que la pantalla introductoria
-# sigue disponible sin el archivo.
+# porque de él dependen los hitos 4 y 7. Como ya no hay carga manual, el archivo
+# se toma del repositorio; si no se pudo descargar, mostramos un mensaje y
+# detenemos el render. La Guía de hitos no llega hasta aquí (hace st.stop antes),
+# así que la pantalla introductoria sigue disponible sin el archivo.
 # ─────────────────────────────────────────────────────────────────────────────
 if df_contratos is None or df_contratos.height == 0:
     st.markdown(error_card(
         "Falta el archivo de contratos (CG-cttos)",
         "El archivo de contratos <b>CG-cttos</b> es obligatorio para calcular los "
         "hitos que dependen del estado de los contratos (<b>Hito 4 · En ejecución</b> y "
-        "<b>Hito 7 · Proyectos suspendidos</b>). No se pudo cargar automáticamente "
-        "desde el repositorio.",
-        "Sube el archivo <b>CG-cttos.xlsx</b> desde el panel lateral, en la sección "
-        "<b>Contratos</b>. Una vez cargado, la aplicación continuará automáticamente.",
+        "<b>Hito 7 · Proyectos suspendidos</b>). No se pudo descargar desde el "
+        "repositorio.",
+        "Verifica que el archivo <b>CG-cttos.xlsx</b> esté publicado en el repositorio "
+        "y usa <b>«Recargar datos del repositorio»</b> en el panel lateral.",
     ), unsafe_allow_html=True)
     st.stop()
 
@@ -661,7 +645,13 @@ HITOS = {
     "H4 · En ejecución":                  ("hito_4_val", None),
     "H5 · En ejecución rezagado":         ("hito_5_val", "clasi_5"),
     "H6 · Proyectos terminados":          ("hito_6_val", "clasi_6"),
+    "H7 · Proyectos suspendidos":         ("hito_7_val", None),
+    "H8 · Proyecto para cierre":          ("hito_8_val", None),
 }
+
+# Hitos que se miden como CONTEO de proyectos (no días): el detalle no muestra
+# promedio de días ni valor en días, solo lista los proyectos.
+_HITOS_CONTEO = {"hito_7_val"}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # UNIVERSO DE TRABAJO
@@ -1031,6 +1021,12 @@ with st.sidebar:
         help=("Reporte completo y consolidado: Departamento, Descentralizadas y "
               "Municipios. Independiente de la vista activa."),
     )
+    st.link_button(
+        "Consolidación de regalías",
+        "https://consolidacionregalias.streamlit.app/",
+        use_container_width=True,
+        help="Abre el tablero de consolidación de regalías en una pestaña nueva.",
+    )
 
 # ═════════════════════════════════════════════════════════════════════════════
 # ROUTING POR VISTA — el sidebar selecciona qué fuente se muestra en pantalla.
@@ -1171,6 +1167,12 @@ if tab_resumen is not None:
         _select_cols_det.insert(5, sel_clasi_col_r)
     if "COMENTARIOS CALIFICACIÓN" in df.columns:
         _select_cols_det.append("COMENTARIOS CALIFICACIÓN")
+    # H8 usa una fecha que no está en DATE_COLS_DET; la añadimos para que su
+    # tooltip de cálculo muestre la fecha real (si existe en el DataFrame).
+    if ("FECHA EN LA QUE PASO A ESTADO PARA CIERRE" in df.columns
+            and "FECHA EN LA QUE PASO A ESTADO PARA CIERRE" not in _select_cols_det):
+        _select_cols_det.append("FECHA EN LA QUE PASO A ESTADO PARA CIERRE")
+    _es_hito_conteo = sel_hito_col_r in _HITOS_CONTEO
 
     df_det = (
         df
@@ -1187,12 +1189,19 @@ if tab_resumen is not None:
             prom     = sub[sel_hito_col_r].mean()
             n        = sub.height
             prom_str = f"{prom:.1f} días" if prom is not None else "—"
+            # Los hitos de conteo (H7) no muestran promedio de días en el título.
+            _exp_label = (f"{entidad}   ·   {n} proyecto(s)"
+                          if _es_hito_conteo
+                          else f"{entidad}   ·   {n} proyecto(s)   ·   Promedio: {prom_str}")
 
-            with st.expander(f"{entidad}   ·   {n} proyecto(s)   ·   Promedio: {prom_str}", expanded=False):
+            with st.expander(_exp_label, expanded=False):
                 det_rows_list = []
                 for r in sub.to_dicts():
                     dias_v   = r[sel_hito_col_r]
-                    dias_str = f"{dias_v:.1f} d" if dias_v is not None else "—"
+                    if _es_hito_conteo:
+                        dias_str = "—"   # H7 es conteo: no aplica valor en días
+                    else:
+                        dias_str = f"{dias_v:.1f} d" if dias_v is not None else "—"
 
                     # ── Reclasificación local — usa INTERVALOS directamente.
                     # Para Hito 0 (sin semáforo) no calculamos clasi_v.
@@ -1480,7 +1489,7 @@ if tab_proyectos is not None:
 
     with st.expander("Verificación del archivo de contratos", expanded=not hay_contratos):
         if _cttos_bytes is None:
-            st.error("No se pudo descargar el archivo de contratos desde GitHub. Intenta subirlo manualmente desde el panel izquierdo.")
+            st.error("No se pudo descargar el archivo de contratos desde el repositorio. Verifica que esté publicado y usa «Recargar datos del repositorio».")
         elif df_contratos is None:
             st.error("El archivo se descargó pero no pudo leerse correctamente.")
             st.caption(_cttos_diag)
@@ -1504,7 +1513,7 @@ if tab_proyectos is not None:
                 st.info(f"{len(sin_ctto)} proyecto(s) no tienen contratos registrados en el archivo.")
 
     if not hay_contratos:
-        st.warning("No se pudieron cargar los contratos. Puedes subirlos manualmente desde el panel izquierdo.", icon=None)
+        st.warning("No se pudieron cargar los contratos desde el repositorio. Usa «Recargar datos del repositorio».", icon=None)
 
     st.markdown(
         f"<div style='font-size:0.73rem;color:{C['muted']};margin:0.4rem 0 0.6rem'>"

@@ -813,6 +813,38 @@ def inject_css():
     }}
     .stDownloadButton > button:hover {{ background: {C['verde_medio']} !important; }}
 
+    /* ── Link button del sidebar (enlace a Consolidación de regalías) ──
+       st.link_button trae por defecto un estilo claro (fondo blanco, texto
+       gris) que en el sidebar oscuro queda ilegible. Lo forzamos a azul sólido
+       con texto blanco para que combine con los demás botones. */
+    section[data-testid="stSidebar"] [data-testid="stLinkButton"] a,
+    section[data-testid="stSidebar"] .stLinkButton a {{
+        background: {C['azul_medio']} !important;
+        color: #ffffff !important;
+        border: 1.5px solid rgba(255,255,255,0.18) !important;
+        border-radius: 8px !important;
+        font-family: 'Montserrat', sans-serif !important;
+        font-weight: 600 !important;
+        font-size: 0.83rem !important;
+        padding: 0.5rem 1.4rem !important;
+        box-shadow: none !important;
+        margin-top: 0.45rem !important;
+        transition: background 0.15s, border-color 0.15s !important;
+    }}
+    section[data-testid="stSidebar"] [data-testid="stLinkButton"] a *,
+    section[data-testid="stSidebar"] .stLinkButton a * {{
+        color: #ffffff !important;
+    }}
+    section[data-testid="stSidebar"] [data-testid="stLinkButton"] a:hover,
+    section[data-testid="stSidebar"] .stLinkButton a:hover {{
+        background: {C['azul_oscuro']} !important;
+        border-color: {C['cian']} !important;
+        color: #ffffff !important;
+    }}
+    section[data-testid="stSidebar"] [data-testid="stLinkButton"] a:hover * {{
+        color: #ffffff !important;
+    }}
+
     /* ── Multiselect / selectbox ── */
     span[data-baseweb="tag"] {{
         background: {C['azul_medio']} !important;

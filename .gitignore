@@ -41,3 +41,9 @@ desktop.ini
 *.tmp
 ~$*.xlsx
 sync_force.txt
+
+
+CLAUDE.md
+.claude
+
+capturas_pantalla/

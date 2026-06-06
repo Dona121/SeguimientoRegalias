@@ -321,12 +321,17 @@ HITO_CALC_META = {
     "hito_5_val": (
         "Horizonte del proyecto", "HORIZONTE DEL PROYECTO",
         "Fecha corte GESPROY",    "FECHA DE CORTE GESPROY",
-        "Días de retraso sobre el horizonte (CPI=0, SPI=0). El resultado se muestra en meses.",
+        "Días de retraso sobre el horizonte vencido. El resultado se muestra en meses.",
     ),
     "hito_6_val": (
         "Fecha finalización",  "FECHA DE FINALIZACIÓN",
         "Fecha corte GESPROY", "FECHA DE CORTE GESPROY",
         "Días entre la fecha de finalización registrada y el corte.",
+    ),
+    "hito_8_val": (
+        "Fecha paso a para cierre", "FECHA EN LA QUE PASO A ESTADO PARA CIERRE",
+        "Fecha corte GESPROY",      "FECHA DE CORTE GESPROY",
+        "Días desde que el proyecto pasó a estado PARA CIERRE hasta el corte. (Hito sin semáforo)",
     ),
 }
 
