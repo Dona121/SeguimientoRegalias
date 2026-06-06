@@ -1086,8 +1086,11 @@ if tab_resumen is not None:
     def _build_row(row):
         e    = html.escape(row["ENTIDAD O SECRETARIA"] or "")
         h7   = int(row["Hito 7"]) if row["Hito 7"] else 0
-        susp = int(row["Suspendidos"]) if row["Suspendidos"] else 0
-        pc   = int(row["Para cierre"]) if row["Para cierre"] else 0
+        # Columnas "Suspendidos" y "Para cierre" (conteo) ocultas — AjustesReporte
+        # punto 11. Para reactivarlas: descomenta estas dos líneas, sus <td> en el
+        # return y los <th> del encabezado.
+        # susp = int(row["Suspendidos"]) if row["Suspendidos"] else 0
+        # pc   = int(row["Para cierre"]) if row["Para cierre"] else 0
         return f"""<tr>
             <td class="entidad-name">{e}</td>
             {hito_cell_sin_semaforo(row['Hito 0 (días)'])}
@@ -1099,8 +1102,8 @@ if tab_resumen is not None:
             {hito_cell(row['Hito 6 (días)'], 'clasi_6')}
             <td style="text-align:center;font-weight:500">{h7}</td>
             {hito_cell_sin_semaforo(row['Hito 8 (días)'])}
-            <td style="text-align:center;font-weight:500">{susp}</td>
-            <td style="text-align:center;font-weight:500">{pc}</td>
+            <!-- Columnas Suspendidos / Para cierre ocultas (AjustesReporte 11):
+                 <td>{{susp}}</td>  <td>{{pc}}</td> -->
             <td class="col-total">{int(row['Total'])}</td>
         </tr>"""
 
@@ -1128,8 +1131,11 @@ if tab_resumen is not None:
             "Número de proyectos en ejecución con al menos un contrato en estado SUSPENDIDO (según el archivo CG-cttos).<br><br>Este hito es informativo: se mide como número de proyectos, sin semáforo.")}
         {th("Para cierre<br>(días)", "Hito 8 · Proyecto para cierre",
             "Promedio de días entre la <b>Fecha en que pasó a estado PARA CIERRE</b> y la <b>Fecha de corte GESPROY</b>.<br><br>Condición: Estado = PARA CIERRE con fecha registrada. Este hito es informativo: no tiene semáforo.")}
-        {th("Suspendidos", "Proyectos suspendidos (contrato)", "Conteo de proyectos cuyo <b>Estado contrato</b> = SUSPENDIDO.")}
-        {th("Para cierre", "Proyectos para cierre", "Conteo de proyectos con Estado = PARA CIERRE.")}
+        <!-- Columnas "Suspendidos" y "Para cierre" (conteo) ocultas — AjustesReporte
+             punto 11. H7/H8 ya cubren esos conceptos. Código original (reactivar
+             envolviendo cada th(...) en llaves dentro de este f-string):
+             th("Suspendidos", "Proyectos suspendidos (contrato)", "Conteo de proyectos cuyo Estado contrato = SUSPENDIDO.")
+             th("Para cierre", "Proyectos para cierre", "Conteo de proyectos con Estado = PARA CIERRE.") -->
         <th class="col-total">Total</th>
     </tr></thead>
     <tbody>{rows_html}</tbody>
@@ -2559,8 +2565,11 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
     rows_html_d = ""
     for row in agrup_descent.to_dicts():
         ent  = html.escape(row.get("EJECUTOR") or "")
-        susp = int(row.get("Suspendidos") or 0)
-        pc   = int(row.get("Para cierre") or 0)
+        # Columnas "Suspendidos" y "Para cierre" (conteo) ocultas — AjustesReporte
+        # punto 11. Para reactivarlas, descomenta estas dos líneas, sus celdas <td>
+        # y los <th> del encabezado.
+        # susp = int(row.get("Suspendidos") or 0)
+        # pc   = int(row.get("Para cierre") or 0)
         cells = ""
         if _has_h0_descent:
             cells += _hito_cell_d_sin_semaforo(row.get("Hito 0 (días)"))
@@ -2570,8 +2579,9 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
             cells += _hito_cell_d(row.get(f"Hito {n} (días)"), ck)
         rows_html_d += (
             f"<tr><td class='entidad-name'>{ent}</td>{cells}"
-            f"<td style='text-align:center;font-weight:500'>{susp}</td>"
-            f"<td style='text-align:center;font-weight:500'>{pc}</td>"
+            # Celdas Suspendidos / Para cierre ocultas (AjustesReporte 11):
+            # f"<td style='text-align:center;font-weight:500'>{susp}</td>"
+            # f"<td style='text-align:center;font-weight:500'>{pc}</td>"
             f"<td class='col-total'>{int(row['Total'])}</td></tr>"
         )
 
@@ -2596,8 +2606,10 @@ if tab_d_resumen is not None and df_descent_hitos is not None:
             "Promedio de días entre la <b>Fecha de suscripción</b> y la <b>Fecha de corte GESPROY</b>.")}
         {th("En ejecución<br>rezagado", "Hito 5",
             "Meses entre el <b>Horizonte del proyecto</b> y la <b>Fecha de corte GESPROY</b>.")}
-        {th("Suspendidos", "Suspendidos", "Conteo por <b>ESTADO CONTRATO = SUSPENDIDO</b>.")}
-        {th("Para cierre", "Para cierre", "Conteo de proyectos con <b>Estado = PARA CIERRE</b>.")}
+        <!-- Columnas "Suspendidos" y "Para cierre" (conteo) ocultas — AjustesReporte
+             punto 11. Código original (reactivar envolviendo cada th(...) en llaves):
+             th("Suspendidos", "Suspendidos", "Conteo por ESTADO CONTRATO = SUSPENDIDO.")
+             th("Para cierre", "Para cierre", "Conteo de proyectos con Estado = PARA CIERRE.") -->
         <th class="col-total">Total</th>
     </tr></thead>
     <tbody>{rows_html_d}</tbody>

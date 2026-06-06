@@ -19,6 +19,8 @@ REALIZADO 7. Revisa la carpeta capturas_pantalla, ahí cargué una imagen de com
 REALIZADO 8. Revisa la carpeta capturas_pantalla la imagen BotonConsolidacion.png. Debes ajustar el color y letra del boton
 REALIZADO 9. Asegurate de que los nuevos hitos agregados aparezcan en la sección DETALLE POR HITO
 REALIZADO 10. Revisa el datelle del hito 7. En Días (pasar el cursor) aparecen elementos HTML
+REALIZADO 11. Las ultimas dos columnas: Suspendidos, Para cierre los cuales solo estan contando los proyectos en ese estado, dejalos ocultos. Comenta el codigo correspondiente a estas ultimas dos columnas.
+
 
 Notas: 
     - El archivo de CG-cttos se debe subir si o si siempre. Así que en caso de que no se suba. Generado un mensaje al entrar en la pagina solictando al usuario el cargue del archivo. Respecto al hito 5 y 7 
