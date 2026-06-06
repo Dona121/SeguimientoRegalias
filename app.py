@@ -1021,11 +1021,14 @@ with st.sidebar:
         help=("Reporte completo y consolidado: Departamento, Descentralizadas y "
               "Municipios. Independiente de la vista activa."),
     )
-    st.link_button(
-        "Consolidación de regalías",
-        "https://consolidacionregalias.streamlit.app/",
-        use_container_width=True,
-        help="Abre el tablero de consolidación de regalías en una pestaña nueva.",
+    # Botón-enlace a Consolidación de regalías. Se renderiza como un <a> con
+    # estilo propio (.sidebar-link-btn) en vez de st.link_button porque el
+    # estilo por defecto de Streamlit (fondo claro) no hereda el tema oscuro
+    # del sidebar. La clase replica el aspecto del botón "Recargar".
+    st.markdown(
+        '<a class="sidebar-link-btn" href="https://consolidacionregalias.streamlit.app/" '
+        'target="_blank" rel="noopener noreferrer">Consolidación de regalías</a>',
+        unsafe_allow_html=True,
     )
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1255,18 +1258,29 @@ if tab_resumen is not None:
                     else:
                         clasi_cell = f"<td>{badge_html(clasi_v, hito_key_detalle)}</td>"
 
-                    det_rows_list.append(f"""<tr class="{row_cls}">
-                        <td><span class="bpin-tag">{_bpin_h}</span></td>
-                        <td style="font-size:0.81rem">{_nom_h}</td>
-                        <td>{estado_html}</td>
-                        <td>
-                          <div class="dias-tip-wrap">
-                            <span class="dias-val-link">{dias_str}</span>
-                            {tooltip}
-                          </div>
-                        </td>
-                        {clasi_cell}
-                    </tr>""")
+                    # Celda de días: si el hito tiene tooltip de cálculo lo
+                    # envolvemos; si no (p. ej. H7, que es conteo y no tiene
+                    # tooltip), mostramos solo el valor. Se arma en una sola
+                    # línea para no dejar líneas en blanco que rompan el HTML
+                    # al renderizar con st.markdown.
+                    if tooltip:
+                        dias_cell = (
+                            f'<td><div class="dias-tip-wrap">'
+                            f'<span class="dias-val-link">{dias_str}</span>{tooltip}'
+                            f'</div></td>'
+                        )
+                    else:
+                        dias_cell = f'<td><span class="dias-val-link">{dias_str}</span></td>'
+
+                    det_rows_list.append(
+                        f'<tr class="{row_cls}">'
+                        f'<td><span class="bpin-tag">{_bpin_h}</span></td>'
+                        f'<td style="font-size:0.81rem">{_nom_h}</td>'
+                        f'<td>{estado_html}</td>'
+                        f'{dias_cell}'
+                        f'{clasi_cell}'
+                        f'</tr>'
+                    )
 
                 st.markdown(f"""
                 <table class="detail-table">

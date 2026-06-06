@@ -18,6 +18,7 @@ REALIZADO 6. Agrega un boton adicional debajo de exportar que lleve al siguiente
 REALIZADO 7. Revisa la carpeta capturas_pantalla, ahí cargué una imagen de como se ven los hitos H1 al H8 en la vista guia de hitos. El contenedor está bien organizado, sin embargo, debajo del nombre del hito muestra una etiqueta div y el color de la tarjeta quedó complemente en azul, afectando el contraste con el texto.
 REALIZADO 8. Revisa la carpeta capturas_pantalla la imagen BotonConsolidacion.png. Debes ajustar el color y letra del boton
 REALIZADO 9. Asegurate de que los nuevos hitos agregados aparezcan en la sección DETALLE POR HITO
+REALIZADO 10. Revisa el datelle del hito 7. En Días (pasar el cursor) aparecen elementos HTML
 
 Notas: 
     - El archivo de CG-cttos se debe subir si o si siempre. Así que en caso de que no se suba. Generado un mensaje al entrar en la pagina solictando al usuario el cargue del archivo. Respecto al hito 5 y 7 

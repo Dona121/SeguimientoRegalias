@@ -813,35 +813,32 @@ def inject_css():
     }}
     .stDownloadButton > button:hover {{ background: {C['verde_medio']} !important; }}
 
-    /* ── Link button del sidebar (enlace a Consolidación de regalías) ──
-       st.link_button trae por defecto un estilo claro (fondo blanco, texto
-       gris) que en el sidebar oscuro queda ilegible. Lo forzamos a azul sólido
-       con texto blanco para que combine con los demás botones. */
-    section[data-testid="stSidebar"] [data-testid="stLinkButton"] a,
-    section[data-testid="stSidebar"] .stLinkButton a {{
-        background: {C['azul_medio']} !important;
-        color: #ffffff !important;
-        border: 1.5px solid rgba(255,255,255,0.18) !important;
+    /* ── Botón-enlace del sidebar (.sidebar-link-btn) ──
+       Anchor estilizado para que luzca idéntico al botón "Recargar datos del
+       repositorio" (mismo formato translúcido cian, hover a blanco). Se usa un
+       <a> propio en lugar de st.link_button porque su estilo por defecto (fondo
+       claro) no hereda el tema oscuro del sidebar. */
+    section[data-testid="stSidebar"] a.sidebar-link-btn {{
+        display: block !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        text-align: center !important;
+        text-decoration: none !important;
+        background: rgba(71,177,213,0.12) !important;
+        color: {C['cian']} !important;
+        border: 1.5px solid rgba(71,177,213,0.35) !important;
         border-radius: 8px !important;
         font-family: 'Montserrat', sans-serif !important;
+        font-size: 0.74rem !important;
         font-weight: 600 !important;
-        font-size: 0.83rem !important;
-        padding: 0.5rem 1.4rem !important;
-        box-shadow: none !important;
+        padding: 0.5rem 1rem !important;
         margin-top: 0.45rem !important;
-        transition: background 0.15s, border-color 0.15s !important;
+        box-shadow: none !important;
+        transition: background 0.15s, border-color 0.15s, color 0.15s !important;
     }}
-    section[data-testid="stSidebar"] [data-testid="stLinkButton"] a *,
-    section[data-testid="stSidebar"] .stLinkButton a * {{
-        color: #ffffff !important;
-    }}
-    section[data-testid="stSidebar"] [data-testid="stLinkButton"] a:hover,
-    section[data-testid="stSidebar"] .stLinkButton a:hover {{
-        background: {C['azul_oscuro']} !important;
+    section[data-testid="stSidebar"] a.sidebar-link-btn:hover {{
+        background: rgba(71,177,213,0.25) !important;
         border-color: {C['cian']} !important;
-        color: #ffffff !important;
-    }}
-    section[data-testid="stSidebar"] [data-testid="stLinkButton"] a:hover * {{
         color: #ffffff !important;
     }}
 
