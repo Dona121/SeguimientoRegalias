@@ -715,6 +715,22 @@ if vista == "Mapa":
         top:0 !important; left:0 !important;
         overflow:hidden !important;
     }
+    /* BACKDROP opaco a pantalla completa: tapa cualquier contenido residual
+       de la vista anterior (p. ej. las tarjetas de la Guía) que Streamlit
+       todavía no ha reconciliado mientras el iframe de Leaflet termina de
+       cargar. Sin esto aparece una "barra" superior al entrar al Mapa que
+       solo desaparece al hacer clic (que fuerza un rerun). El backdrop es un
+       pseudo-elemento fixed con z-index:0: queda por DEBAJO del iframe
+       (z-index:1) y del sidebar (z-index alto), pero por ENCIMA del contenido
+       en flujo normal, así que oculta el residuo sin tapar el mapa. */
+    [data-testid="stAppViewContainer"]::before {
+        content:"" !important;
+        position:fixed !important;
+        top:0 !important; left:0 !important; right:0 !important; bottom:0 !important;
+        background:#0b1220 !important;
+        z-index:0 !important;
+        pointer-events:none !important;
+    }
     section.main, .stMain, section[class*="stMain"] {
         background:#0b1220 !important;
         height:100vh !important; max-height:100vh !important;
@@ -1026,7 +1042,7 @@ with st.sidebar:
     # estilo por defecto de Streamlit (fondo claro) no hereda el tema oscuro
     # del sidebar. La clase replica el aspecto del botón "Recargar".
     st.markdown(
-        '<a class="sidebar-link-btn" href="https://consolidacionregalias.streamlit.app/" '
+        '<a class="sidebar-link-btn" href="https://consolidacionregalias-ty2maxjreqr5gnbwyjkvc9.streamlit.app/" '
         'target="_blank" rel="noopener noreferrer">Consolidación de regalías</a>',
         unsafe_allow_html=True,
     )

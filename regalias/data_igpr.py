@@ -157,6 +157,30 @@ def color_por_puntaje(p: float | None) -> str:
     return "#dc2626"      # rojo — bajo
 
 
+def estilo_por_puntaje(p: float | None) -> str:
+    """CSS (fondo tenue + texto del color) para la pildora de puntaje.
+
+    Paleta institucional suave: en lugar de rellenos saturados con texto
+    blanco (que deslumbran en las tablas), usa un fondo pastel con el texto
+    en el color de la categoría. Devuelve un fragmento `background:..;color:..`
+    listo para usar como `style='...'`.
+    """
+    gris = "background:#f1f5f9;color:#64748b"
+    if p is None:
+        return gris
+    try:
+        v = float(p)
+    except (TypeError, ValueError):
+        return gris
+    if v >= 80:
+        return "background:#e4f1ea;color:#15803d"   # verde — sobresaliente
+    if v >= 60:
+        return "background:#eef4e0;color:#4d7c0f"   # lima — adecuado
+    if v >= 40:
+        return "background:#fbf1de;color:#b45309"   # ámbar — limítrofe
+    return "background:#fae5e5;color:#b91c1c"        # rojo — bajo
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Carga
 # ─────────────────────────────────────────────────────────────────────────────

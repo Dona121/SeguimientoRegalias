@@ -27,7 +27,7 @@ from regalias.data_igpr import (
     cargar_igpr,
     resumen_por_periodo,
     resumen_por_entidad_periodo,
-    color_por_puntaje,
+    estilo_por_puntaje,
     clasificar_puntaje,
     ORDEN_TRIMESTRE,
     TRIMESTRE_CORTO,
@@ -86,11 +86,13 @@ _CSS_IGPR = f"""
 }}
 .igpr-matriz tr:last-child td {{ border-bottom:none; }}
 .igpr-cell {{
-    display:inline-block; min-width:54px; padding:0.18rem 0.55rem;
-    border-radius:16px; color:#fff; font-weight:700; font-size:0.82rem;
+    display:inline-block; min-width:54px; padding:0.16rem 0.55rem;
+    border-radius:8px; font-weight:600; font-size:0.82rem;
+    border:1px solid rgba(15,23,42,0.06);
 }}
 .igpr-cell.sin-dato {{
     background:transparent; color:{C['muted']}; font-weight:500;
+    border-color:transparent;
 }}
 
 /* Leyenda de escala */
@@ -119,8 +121,9 @@ _CSS_IGPR = f"""
     margin-top:0.18rem;
 }}
 .igpr-proy .pill {{
-    display:inline-block; padding:0.22rem 0.7rem; border-radius:14px;
-    color:#fff; font-weight:700; font-size:0.78rem;
+    display:inline-block; padding:0.2rem 0.7rem; border-radius:8px;
+    font-weight:600; font-size:0.78rem;
+    border:1px solid rgba(15,23,42,0.06);
 }}
 
 /* Cards de Metodología */
@@ -173,8 +176,7 @@ def _pill(p: float | None) -> str:
     """Pildora coloreada con el puntaje (o '—' si no hay dato)."""
     if p is None:
         return f"<span class='igpr-cell sin-dato'>—</span>"
-    color = color_por_puntaje(p)
-    return f"<span class='igpr-cell' style='background:{color}'>{p:.1f}</span>"
+    return f"<span class='igpr-cell' style='{estilo_por_puntaje(p)}'>{p:.1f}</span>"
 
 
 def _leyenda() -> str:
@@ -224,7 +226,7 @@ def _resumen_general(df: pl.DataFrame) -> None:
         per = _periodo_label(r["VIGENCIA"], r["TRIMESTRE EVALUADO"])
         promedio = r["PROMEDIO"]
         cat = clasificar_puntaje(promedio)
-        cat_color = color_por_puntaje(promedio)
+        cat_estilo = estilo_por_puntaje(promedio)
         filas += (
             f"<tr>"
             f"<td class='ent'>{html.escape(per)}</td>"
@@ -232,7 +234,7 @@ def _resumen_general(df: pl.DataFrame) -> None:
             f"<td>{_pill(r['MINIMO'])}</td>"
             f"<td>{_pill(r['MAXIMO'])}</td>"
             f"<td>{r['PROYECTOS']}</td>"
-            f"<td><span class='igpr-cell' style='background:{cat_color}'>{cat}</span></td>"
+            f"<td><span class='igpr-cell' style='{cat_estilo}'>{cat}</span></td>"
             f"</tr>"
         )
 
@@ -439,9 +441,8 @@ def _detalle_trimestre(df: pl.DataFrame) -> None:
                 nombre = html.escape(str(p.get("NOMBRE DEL PROYECTO") or "(sin nombre)"))
                 bpin = html.escape(str(p.get("BPIN") or "—"))
                 punt = p.get("PUNTAJE")
-                col = color_por_puntaje(punt)
-                pill = f"<span class='pill' style='background:{col}'>{punt:.1f}</span>" if punt is not None \
-                    else "<span class='pill' style='background:#94a3b8'>—</span>"
+                pill = f"<span class='pill' style='{estilo_por_puntaje(punt)}'>{punt:.1f}</span>" if punt is not None \
+                    else f"<span class='pill' style='{estilo_por_puntaje(None)}'>—</span>"
                 extra_html = ""
                 if incluir_plazo:
                     cls = p.get("CLASIFICACIÓN PLAZO PARA EJECUCIÓN")
@@ -505,7 +506,7 @@ def _detalle_entidad(df: pl.DataFrame) -> None:
             f"<td class='ent'>{html.escape(r['PERIODO'])}</td>"
             f"<td>{_pill(r['PROM'])}</td>"
             f"<td>{r['N']}</td>"
-            f"<td><span class='igpr-cell' style='background:{color_por_puntaje(r['PROM'])}'>"
+            f"<td><span class='igpr-cell' style='{estilo_por_puntaje(r['PROM'])}'>"
             f"{clasificar_puntaje(r['PROM'])}</span></td>"
             f"</tr>"
         )
@@ -551,9 +552,8 @@ def _detalle_entidad(df: pl.DataFrame) -> None:
                 nombre = html.escape(str(p.get("NOMBRE DEL PROYECTO") or "(sin nombre)"))
                 bpin = html.escape(str(p.get("BPIN") or "—"))
                 punt = p.get("PUNTAJE")
-                col = color_por_puntaje(punt)
-                pill = f"<span class='pill' style='background:{col}'>{punt:.1f}</span>" if punt is not None \
-                    else "<span class='pill' style='background:#94a3b8'>—</span>"
+                pill = f"<span class='pill' style='{estilo_por_puntaje(punt)}'>{punt:.1f}</span>" if punt is not None \
+                    else f"<span class='pill' style='{estilo_por_puntaje(None)}'>—</span>"
                 extra_html = ""
                 if incluir_plazo:
                     cls = p.get("CLASIFICACIÓN PLAZO PARA EJECUCIÓN")

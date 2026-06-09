@@ -20,7 +20,8 @@ REALIZADO 8. Revisa la carpeta capturas_pantalla la imagen BotonConsolidacion.pn
 REALIZADO 9. Asegurate de que los nuevos hitos agregados aparezcan en la sección DETALLE POR HITO
 REALIZADO 10. Revisa el datelle del hito 7. En Días (pasar el cursor) aparecen elementos HTML
 REALIZADO 11. Las ultimas dos columnas: Suspendidos, Para cierre los cuales solo estan contando los proyectos en ese estado, dejalos ocultos. Comenta el codigo correspondiente a estas ultimas dos columnas.
-
+REALIZADO 12. Cuando cargo por primera vez el mapa, me muestra un barra superior que desaparece cuando le doy click en el mapa. Revisa porque esa barra sigue siendo persistente. La puedes ver en la carpeta capturas_pantalla/BarraSuperiorMapa.png
+REALIZADO 13. Los colores de los semaforos en IGPR se siguen viendo muy saturados. Revisa la capturas_pantalla/ColoresIGPR.png 
 
 Notas: 
     - El archivo de CG-cttos se debe subir si o si siempre. Así que en caso de que no se suba. Generado un mensaje al entrar en la pagina solictando al usuario el cargue del archivo. Respecto al hito 5 y 7 
