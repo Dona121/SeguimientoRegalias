@@ -1877,12 +1877,14 @@ COLS_EVAL = [
     "CALIFICACIÓN INFORMACIÓN A TIEMPO",
     "CALIFICACIÓN EJECUCIÓN DEL PROYECTO",
     "CALIFICACIÓN CALIDAD INFORMACIÓN",
+    "ÍNDICE DE EFICIENCIA EN LA TERMINACIÓN",
 ]
 COLS_EVAL_LABELS = [
     "Desempeño en contratación",
     "Información a tiempo",
     "Ejecución del proyecto",
     "Calidad de la información",
+    "Eficiencia en la terminación",
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────

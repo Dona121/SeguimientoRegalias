@@ -14,14 +14,15 @@ REALIZADO 4. Agrega un nuevo hito: H8 - Proyecto para cierre. Con las siguientes
     c2-  Deben existir los siguientes datos para que se realice el calculo: FECHA EN LA QUE PASO A ESTADO PARA CIERRE, FECHA DE CORTE GESPROY Y FECHA ACTUAL (esa la generas de forma automatica). Para cada proyecto realizas la siguiente operacion FECHA DE CORTE GESPROY/FECHA ACTUAL - FECHA EN LA QUE PASO A ESTADO PARA CIERRE en dias totales y luego promedias los días por dependencia.
     c3 - Este hito se mide como promedio de días de los proyectos que se calculen la c2 y no tiene asociado semaforos.
 REALIZADO 5. Quita del panel izquierdo las opciones de cargar el excel de seguimiento y el archivo de contratos. Estos archivos se van a tomar de ahora en adelante del repositorio en el cual se está haciendo cargue. Solo deja los botones de recargar datos del repositorio y de exportar
-REALIZADO 6. Agrega un boton adicional debajo de exportar que lleve al siguiente enlace: https://consolidacionregalias.streamlit.app/
+REALIZADO 6. Agrega un boton adicional debajo de exportar que lleve al siguiente enlace: https://consolidacionregalias-ty2maxjreqr5gnbwyjkvc9.streamlit.app/
 REALIZADO 7. Revisa la carpeta capturas_pantalla, ahí cargué una imagen de como se ven los hitos H1 al H8 en la vista guia de hitos. El contenedor está bien organizado, sin embargo, debajo del nombre del hito muestra una etiqueta div y el color de la tarjeta quedó complemente en azul, afectando el contraste con el texto.
 REALIZADO 8. Revisa la carpeta capturas_pantalla la imagen BotonConsolidacion.png. Debes ajustar el color y letra del boton
 REALIZADO 9. Asegurate de que los nuevos hitos agregados aparezcan en la sección DETALLE POR HITO
 REALIZADO 10. Revisa el datelle del hito 7. En Días (pasar el cursor) aparecen elementos HTML
 REALIZADO 11. Las ultimas dos columnas: Suspendidos, Para cierre los cuales solo estan contando los proyectos en ese estado, dejalos ocultos. Comenta el codigo correspondiente a estas ultimas dos columnas.
 REALIZADO 12. Cuando cargo por primera vez el mapa, me muestra un barra superior que desaparece cuando le doy click en el mapa. Revisa porque esa barra sigue siendo persistente. La puedes ver en la carpeta capturas_pantalla/BarraSuperiorMapa.png
-REALIZADO 13. Los colores de los semaforos en IGPR se siguen viendo muy saturados. Revisa la capturas_pantalla/ColoresIGPR.png 
+REALIZADO 13. Los colores de los semaforos en IGPR se siguen viendo muy saturados. Revisa la capturas_pantalla/ColoresIGPR.png
+REALIZADO 14. En la pestaña "Evaluación del Modelo" para Departamento y Descentralizadas agrega otra calificación a partir de la columna "ÍNDICE DE EFICIENCIA EN LA TERMINACIÓN". Puedes revisar la nueva versión que se encuentra en la carpeta Contexto. Por lo pronto no tiene datos, pero se va a evaluar como las otras calificaciones: Promedio de los datos para cada dependencia.
 
 Notas: 
     - El archivo de CG-cttos se debe subir si o si siempre. Así que en caso de que no se suba. Generado un mensaje al entrar en la pagina solictando al usuario el cargue del archivo. Respecto al hito 5 y 7 

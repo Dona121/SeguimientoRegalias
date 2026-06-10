@@ -1691,12 +1691,7 @@ if tab_evaluacion is not None:
         </style>
         """, unsafe_allow_html=True)
 
-        tabs_eval = st.tabs([
-            "Desempeño en contratación",
-            "Información a tiempo",
-            "Ejecución del proyecto",
-            "Calidad de la información",
-        ])
+        tabs_eval = st.tabs(list(COLS_EVAL_LABELS))
 
         for i, (col_cal, label_cal) in enumerate(zip(COLS_EVAL, COLS_EVAL_LABELS)):
             with tabs_eval[i]:
@@ -2917,12 +2912,7 @@ if tab_d_evaluacion is not None:
         label_entidad_d = "Ejecutor"
         max_score_d     = 100.0
 
-        tabs_eval_d = st.tabs([
-            "Desempeño en contratación",
-            "Información a tiempo",
-            "Ejecución del proyecto",
-            "Calidad de la información",
-        ])
+        tabs_eval_d = st.tabs(list(COLS_EVAL_LABELS))
 
         for i, (col_cal, label_cal) in enumerate(zip(COLS_EVAL, COLS_EVAL_LABELS)):
             with tabs_eval_d[i]:
