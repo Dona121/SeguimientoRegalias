@@ -1,7 +1,8 @@
 """
 igpr.py
 Vista del Índice de Gestión de Proyectos de Regalías (IGPR).
-Consolidado de los 5 trimestres disponibles (I-IV 2025 y I 2026).
+Consolidado de todos los trimestres disponibles (ver TRIMESTRES_IGPR en
+data_igpr.py: I-IV 2025 y I-II 2026 al momento de escribir esto).
 
 Estructura de la vista
 ──────────────────────
@@ -31,6 +32,7 @@ from regalias.data_igpr import (
     clasificar_puntaje,
     ORDEN_TRIMESTRE,
     TRIMESTRE_CORTO,
+    TRIMESTRES_IGPR,
     UMBRAL_ADECUADO_DEPARTAMENTO,
 )
 
@@ -755,7 +757,7 @@ def render_igpr(matriz_bytes: bytes | None) -> None:
         )
         return
 
-    with st.spinner("Descargando resultados IGPR (5 trimestres)…"):
+    with st.spinner(f"Descargando resultados IGPR ({len(TRIMESTRES_IGPR)} trimestres)…"):
         df = cargar_igpr(matriz_bytes)
 
     if df.is_empty():

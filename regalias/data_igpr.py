@@ -94,6 +94,23 @@ TRIMESTRES_IGPR: list[dict] = [
             "MODIFICACIÓN REPORTE EJECUCIÓN",
         ],
     },
+    {
+        "url":         IGPR_BASE + "Resultados%20IGPR%20-%20II%20trimestre%202026%2020082026.xlsx",
+        "tabla":       "IGPR_II_Trimestre_2026",
+        "col_puntaje": "IGPR PROYECTO FINAL",
+        "trimestre":   "SEGUNDO TRIMESTRE",
+        "vigencia":    2026,
+        # Mismo esquema que el I trimestre 2026: la columna de puntaje se llama
+        # "IGPR PROYECTO FINAL" y trae los flags de situación + clasificación
+        # de plazo. El descuento de −10 al promedio de entidad/periodo aplica
+        # igual (vigencia >= 2026).
+        "extras":      [
+            "CLASIFICACIÓN PLAZO PARA EJECUCIÓN",
+            "INCONSISTENCIAS EN VISITAS",
+            "PROYECTOS CON PRESUNTAS IRREGULARIDADES GRAVES",
+            "MODIFICACIÓN REPORTE EJECUCIÓN",
+        ],
+    },
 ]
 
 
@@ -412,7 +429,7 @@ def _procesar_un_trimestre(file_bytes: bytes,
 
 # Bump _CACHE_VERSION cuando cambie la lógica de cargar_igpr — eso fuerza
 # que Streamlit invalide el resultado guardado y re-ejecute la función.
-_CARGAR_IGPR_CACHE_VERSION = "v4-descuento-a-nivel-entidad-periodo"
+_CARGAR_IGPR_CACHE_VERSION = "v5-agrega-ii-trimestre-2026"
 
 
 @st.cache_data(show_spinner=False, ttl=3600)

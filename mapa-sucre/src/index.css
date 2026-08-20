@@ -1,0 +1,121 @@
+@import "tailwindcss";
+
+/* Tema blanco institucional. Layout base en CSS plano para que la app funcione
+   aunque no uses utilidades de Tailwind. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --ground: #eef3fa;
+  --surface: #ffffff;
+  --surface-2: #f4f7fc;
+  --ink: #0f1b2d;
+  --muted: #5b6b82;
+  --line: #dce3ec;
+  --line-strong: #c2cddd;
+  --accent: #1d4ed8;
+  --accent-ink: #ffffff;
+  --warn: #b45309;
+  --ok: #166534;
+  --nodata: #dfe6f0;
+}
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; height: 100%; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--ground);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+.app { display: flex; height: 100dvh; }
+
+.side {
+  width: 330px; min-width: 290px;
+  background: var(--surface); border-right: 1px solid var(--line);
+  padding: 18px; overflow-y: auto;
+}
+.map-wrap { position: relative; flex: 1; background: var(--ground); }
+
+.panel .eyebrow {
+  font-size: .62rem; text-transform: uppercase; letter-spacing: .16em;
+  color: var(--accent); font-weight: 800;
+}
+.panel h1 { font-size: 1.24rem; margin: 2px 0 14px; color: var(--ink); font-weight: 800; }
+.muted { font-size: .8rem; color: var(--muted); margin: 12px 0 0; }
+
+/* Control segmentado modo subregión / datos */
+.seg { display: flex; background: var(--ground); border: 1px solid var(--line);
+  border-radius: 10px; padding: 3px; }
+.seg button {
+  flex: 1; appearance: none; border: 0; background: transparent; color: var(--muted);
+  font: inherit; font-size: .78rem; font-weight: 700; padding: 8px; border-radius: 7px;
+  cursor: pointer; transition: .15s;
+}
+.seg button.on { background: var(--surface); color: var(--accent);
+  box-shadow: 0 1px 2px rgba(15, 27, 45, .12); }
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.field { display: block; margin-top: 14px; font-size: .78rem; }
+.field span { display: block; margin-bottom: .25rem; color: #3d4a5c; font-weight: 600; }
+.field input, .field select {
+  width: 100%; padding: 8px 9px;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line-strong); border-radius: 8px; font: inherit; font-size: .78rem;
+}
+.field select { appearance: none; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.status { margin-top: 14px; font-size: .78rem; line-height: 1.5; }
+.status .ok { color: var(--ok); font-weight: 600; }
+.status .warn {
+  margin-top: .7rem; padding: 9px 11px; border-radius: 9px;
+  background: color-mix(in srgb, var(--warn) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+}
+.status .warn b { color: var(--warn); }
+.status ul { margin: .3rem 0; padding-left: 1.1rem; }
+.status .warn p { color: #3d4a5c; margin: .3rem 0 0; }
+.hint { margin-top: 1rem; font-size: .72rem; color: var(--muted); line-height: 1.5; }
+
+/* Leyenda flotante */
+.leyenda {
+  position: absolute; left: 18px; bottom: 18px; z-index: 5;
+  background: rgba(255, 255, 255, .94); border: 1px solid var(--line);
+  border-radius: 12px; padding: 12px 14px; font-size: .78rem;
+  box-shadow: 0 1px 2px rgba(15, 27, 45, .06), 0 10px 30px rgba(15, 27, 45, .12);
+  backdrop-filter: blur(6px); min-width: 210px;
+}
+.leyenda .titulo {
+  color: var(--muted); font-weight: 800; margin-bottom: 9px;
+  text-transform: uppercase; letter-spacing: .1em; font-size: .6rem;
+}
+.leyenda .row { display: flex; align-items: center; gap: 9px; margin: 5px 0; color: var(--ink); }
+.leyenda .row i { width: 14px; height: 14px; border-radius: 4px; flex-shrink: 0; }
+.leyenda .row .n { margin-left: auto; color: var(--muted); font-size: .7rem;
+  font-variant-numeric: tabular-nums; }
+.leyenda .barra { height: 11px; border-radius: 6px;
+  background: linear-gradient(90deg, #e2ecfb, #a9c8f2, #5a92e6, #2559c2, #123a86); }
+.leyenda .barra-lbls { display: flex; justify-content: space-between; font-size: .7rem;
+  color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 5px; }
+.leyenda .nd { display: flex; align-items: center; gap: 8px; font-size: .72rem;
+  color: var(--muted); margin-top: 9px; }
+.leyenda .nd i { width: 13px; height: 13px; border-radius: 3px; background: var(--nodata);
+  border: 1px solid var(--line-strong); }
+
+/* Popup de MapLibre en tema claro */
+.maplibregl-popup-content {
+  background: #ffffff; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 8px; font-size: .78rem;
+  padding: 8px 12px; box-shadow: 0 8px 24px rgba(15, 27, 45, .16);
+}
+.maplibregl-popup-tip { border-top-color: #ffffff !important; }
+.maplibregl-popup-close-button { color: var(--muted); font-size: 1rem; }
+
+/* Responsive: en móvil el panel pasa arriba y se apila */
+@media (max-width: 720px) {
+  .app { flex-direction: column; }
+  .side {
+    width: 100%; min-width: 0; max-height: 46vh;
+    border-right: none; border-bottom: 1px solid var(--line);
+  }
+}
