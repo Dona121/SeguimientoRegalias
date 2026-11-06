@@ -2789,7 +2789,7 @@ if tab_d_proyectos is not None and df_descent_hitos is not None:
     st.markdown("<div class='section-heading'>Proyectos · Descentralizadas</div>",
                 unsafe_allow_html=True)
 
-    fcd1, fcd2, fcd3 = st.columns([2, 1.6, 1.4])
+    fcd1, fcd2, fcd3, fcd4 = st.columns([2, 1.5, 1.3, 1.3])
     with fcd1:
         busq_d = st.text_input("busq_descent", placeholder="Buscar por BPIN o nombre…",
                                label_visibility="collapsed", key="busq_d")
@@ -2808,6 +2808,13 @@ if tab_d_proyectos is not None and df_descent_hitos is not None:
             )
         else:
             sel_sector_d = []
+    with fcd4:
+        estados_opts_d = sorted(df_descent_hitos["ESTADO PROYECTO"].drop_nulls().unique().to_list())
+        sel_est_d = st.multiselect(
+            "Estado proyecto (Descent.)", estados_opts_d,
+            placeholder="Todos los estados",
+            label_visibility="collapsed", key="ms_est_d",
+        )
 
     df_proy_d = df_descent_hitos
     if busq_d:
@@ -2825,6 +2832,8 @@ if tab_d_proyectos is not None and df_descent_hitos is not None:
         df_proy_d = df_proy_d.filter(pl.col("EJECUTOR").is_in(sel_eje_d))
     if sel_sector_d:
         df_proy_d = df_proy_d.filter(pl.col("SECTOR").is_in(sel_sector_d))
+    if sel_est_d:
+        df_proy_d = df_proy_d.filter(pl.col("ESTADO PROYECTO").is_in(sel_est_d))
 
     df_proy_d = df_proy_d.sort(["EJECUTOR", "BPIN"])
     st.markdown(
@@ -2839,6 +2848,7 @@ if tab_d_proyectos is not None and df_descent_hitos is not None:
         bpin   = html.escape(str(r.get("BPIN") or "—"))
         nom    = html.escape(r.get("NOMBRE DEL PROYECTO") or "—")
         sector_x = html.escape(r.get("SECTOR") or "—")
+        coment_x = html.escape((r.get("COMENTARIOS CALIFICACIÓN") or "").strip() or "—").replace("\n", "<br>")
         est    = r.get("ESTADO PROYECTO") or ""
         af     = r.get("AVANCE FÍSICO")
         an     = r.get("AVANCE FINANCIERO")
@@ -2859,6 +2869,7 @@ if tab_d_proyectos is not None and df_descent_hitos is not None:
             <td>{_estado_tooltip_html(est, r)}</td>
             <td style="text-align:center">{_fmt_pct(af)}</td>
             <td style="text-align:center">{_fmt_pct(an)}</td>
+            <td style="font-size:0.72rem;color:{C['muted']};white-space:normal;line-height:1.35">{coment_x}</td>
         </tr>""")
 
     st.markdown(f"""
@@ -2871,9 +2882,10 @@ if tab_d_proyectos is not None and df_descent_hitos is not None:
         <th style="width:165px">Estado proyecto</th>
         <th style="width:85px">Avance<br>físico</th>
         <th style="width:85px">Avance<br>financiero</th>
+        <th style="width:230px">Comentarios</th>
     </tr></thead>
     <tbody>{''.join(rows_d_html) if rows_d_html else
-        f'<tr><td colspan="7" style="padding:1rem;text-align:center;color:{C["muted"]};font-style:italic">'
+        f'<tr><td colspan="8" style="padding:1rem;text-align:center;color:{C["muted"]};font-style:italic">'
         'Sin proyectos para los filtros activos.</td></tr>'}
     </tbody></table>
     """, unsafe_allow_html=True)
@@ -3288,7 +3300,7 @@ if tab_m_proyectos is not None and df_municipios is not None:
         unsafe_allow_html=True,
     )
 
-    fmc1, fmc2, fmc3 = st.columns([2, 1.6, 1.4])
+    fmc1, fmc2, fmc3, fmc4 = st.columns([2, 1.5, 1.3, 1.3])
     with fmc1:
         busq_m = st.text_input("busq_munic", placeholder="Buscar por BPIN o nombre…",
                                label_visibility="collapsed", key="busq_m")
@@ -3307,6 +3319,13 @@ if tab_m_proyectos is not None and df_municipios is not None:
             )
         else:
             sel_sector_m = []
+    with fmc4:
+        estados_opts_m = sorted(df_municipios["ESTADO PROYECTO"].drop_nulls().unique().to_list())
+        sel_est_m = st.multiselect(
+            "Estado proyecto (Municipios)", estados_opts_m,
+            placeholder="Todos los estados",
+            label_visibility="collapsed", key="ms_est_m",
+        )
 
     df_proy_m = df_municipios
     if busq_m:
@@ -3324,6 +3343,8 @@ if tab_m_proyectos is not None and df_municipios is not None:
         df_proy_m = df_proy_m.filter(pl.col("EJECUTOR").is_in(sel_eje_m))
     if sel_sector_m:
         df_proy_m = df_proy_m.filter(pl.col("SECTOR").is_in(sel_sector_m))
+    if sel_est_m:
+        df_proy_m = df_proy_m.filter(pl.col("ESTADO PROYECTO").is_in(sel_est_m))
 
     df_proy_m = df_proy_m.sort(["EJECUTOR", "BPIN"])
     st.markdown(
@@ -3365,6 +3386,7 @@ if tab_m_proyectos is not None and df_municipios is not None:
             )
         else:
             estado_m_html = f'<span class="estado-tag">{est or "—"}</span>'
+        coment_m_cell = html.escape(_coment_m or "—").replace("\n", "<br>")
 
         rows_m_html.append(f"""
         <tr class="proy-data-row">
@@ -3375,6 +3397,7 @@ if tab_m_proyectos is not None and df_municipios is not None:
             <td>{estado_m_html}</td>
             <td style="text-align:center">{_fmt_pct(af)}</td>
             <td style="text-align:center">{_fmt_pct(an)}</td>
+            <td style="font-size:0.72rem;color:{C['muted']};white-space:normal;line-height:1.35">{coment_m_cell}</td>
         </tr>""")
 
     st.markdown(f"""
@@ -3387,9 +3410,10 @@ if tab_m_proyectos is not None and df_municipios is not None:
         <th style="width:140px">Estado proyecto</th>
         <th style="width:80px">Avance<br>físico</th>
         <th style="width:80px">Avance<br>financiero</th>
+        <th style="width:230px">Comentarios</th>
     </tr></thead>
     <tbody>{''.join(rows_m_html) if rows_m_html else
-        f'<tr><td colspan="7" style="padding:1rem;text-align:center;color:{C["muted"]};font-style:italic">'
+        f'<tr><td colspan="8" style="padding:1rem;text-align:center;color:{C["muted"]};font-style:italic">'
         'Sin proyectos para los filtros activos.</td></tr>'}
     </tbody></table>
     """, unsafe_allow_html=True)

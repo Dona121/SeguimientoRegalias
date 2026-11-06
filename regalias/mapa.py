@@ -1468,9 +1468,13 @@ const PAYLOAD = __PAYLOAD__;
 const map = L.map('map', { zoomControl: true, attributionControl: false })
   .setView(PAYLOAD.centro, PAYLOAD.zoom);
 
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-  maxZoom: 18,
+// Mapa base oscuro de Esri (no requiere API key; CARTO ahora la exige).
+// Esri exige atribución: se agrega un control mínimo abajo a la derecha.
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+  maxZoom: 16,
+  attribution: 'Tiles &copy; Esri',
 }).addTo(map);
+L.control.attribution({ prefix: false, position: 'bottomright' }).addTo(map);
 
 // ── Capa GeoJSON: contorno de Sucre y sus 26 municipios ────────────────────
 const GEOJSON_SUCRE = __GEOJSON__;
